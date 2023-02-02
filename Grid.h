@@ -8,6 +8,8 @@
 #include "Cell.h"
 #include <iostream>
 #include <iterator>
+#include <string>
+#include <fstream>
 
 class Grid {
 public:
@@ -32,10 +34,11 @@ public:
     void updatePositions(); // update the positions with euler (ok b/c no gravity for now)
     void reassignParticlesToCells(); // brute force ensure all the particles are assigned to appropriate cells
     void enforceDomain(); // make sure particles don't leave the domain by reflecting them back in
+    void writeParticlesToDisk(std::string filename);
+    std::string str(); // get string representation of grid
 
 private:
     void setCellBoundaries();
-    std::shared_ptr<Cell> getCellPtr(int i, int j, int k);
     void addParticlesToCells();
 };
 

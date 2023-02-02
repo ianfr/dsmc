@@ -69,8 +69,6 @@ void Grid::addParticlesToCells() {
     for (int i=0; i < x; i++) {
         for (int j=0; j < y; j++) {
             for (int k = 0; k < z; k++) {
-//                auto cell = getCellPtr(i, j, k);
-                std::cout << i << " " << j << " " << k << " \t";
                 std::vector<std::shared_ptr<Particle>> tmp_part(num_p_per_cell);
                 for (int idx = 0; idx < tmp_part.size(); idx++) {
                     tmp_part[idx] = std::make_shared<Particle>(m_part[plist_idx + idx]);
@@ -197,4 +195,29 @@ void Grid::enforceDomain() {
 #if PRINT_VERBOSE
     std::cout << "Done enforcing domain" << std::endl;
 #endif
+}
+
+void Grid::writeParticlesToDisk(std::string filename) {
+    std::ofstream outFile(filename, std::ios::trunc);
+    outFile << "x, y, z, velmag\n";
+    for (auto &p : m_part) {
+        outFile << p.pos(0) << ", " << p.pos(1) << ", " << p.pos(2) << ", " << p.vel.norm() << "\n";
+    }
+}
+
+std::string Grid::str() {
+    std::ostringstream oss;
+    int x = grid_dims(0);
+    int y = grid_dims(1);
+    int z = grid_dims(2);
+    for (int i=0; i < x; i++) {
+        for (int j=0; j < y; j++) {
+            for (int k = 0; k < z; k++) {
+                oss << "CELL: (" << i << " " << j << " " << k << ")\n";
+                oss << m_grid[i * x * z + j * z + k].str();
+            }
+        }
+    }
+
+    return oss.str();
 }

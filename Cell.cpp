@@ -88,3 +88,19 @@ void Cell::initRandParticles(std::vector<std::shared_ptr<Particle>> &parts) {
         p->vel = Vector3f::Random() * v_mult;
     }
 }
+
+std::string Cell::str() {
+
+    std::ostringstream oss;
+
+    oss << "x_bounds: " << x_b[0] << " " << x_b[1] << "\n";
+    oss << "y_bounds: " << y_b[0] << " " << y_b[1] << "\n";
+    oss << "z_bounds: " << z_b[0] << " " << z_b[1] << "\n";
+
+    for (auto p : m_part) {
+        oss << "pos: " << p->pos(0) << " " << p->pos(1) << " " << p->pos(2)
+           << " vel: " << p->vel(0) << " " << p->vel(1) << " " << p->vel(2) << "\n";
+    }
+
+    return oss.str();
+}
