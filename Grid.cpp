@@ -119,35 +119,90 @@ void Grid::updatePositions() {
 void Grid::reassignParticlesToCells() {
 
     // Delete all the smart pointers that exist in Cells
+//    int x = grid_dims(0);
+//    int y = grid_dims(1);
+//    int z = grid_dims(2);
+//    for (int i=0; i < x; i++) {
+//        for (int j=0; j < y; j++) {
+//            for (int k = 0; k < z; k++) {
+//                m_grid[i * x * z + j * z + k].m_part.clear();
+//            }
+//        }
+//    }
+//
+//    for (int p_idx = 0; p_idx < m_part.size(); p_idx++) {
+//        float p_x = m_part[p_idx].pos(0);
+//        float p_y = m_part[p_idx].pos(1);
+//        float p_z = m_part[p_idx].pos(2);
+//
+//        int x = grid_dims(0);
+//        int y = grid_dims(1);
+//        int z = grid_dims(2);
+//        for (int i=0; i < x; i++) {
+//            for (int j=0; j < y; j++) {
+//                for (int k = 0; k < z; k++) {
+//                    std::vector<std::shared_ptr<Particle>> tmp_part;
+//                    if (m_grid[i * x * z + j * z + k].checkIfParticleInside(m_part[p_idx])) {
+//                        auto tmp = std::make_shared<Particle>(m_part[p_idx]);
+//                        m_grid[i * x * z + j * z + k].m_part.push_back(tmp);
+//                    }
+//                }
+//            }
+//        }
+//    }
+
+    // have each Cell MOVE smart pointers for Particles that aren't inside them anymore
+    std::vector<std::shared_ptr<Particle>> need_to_move;
+
+    // access the grid as a flat list
+    // move
     int x = grid_dims(0);
     int y = grid_dims(1);
     int z = grid_dims(2);
-    for (int i=0; i < x; i++) {
-        for (int j=0; j < y; j++) {
-            for (int k = 0; k < z; k++) {
-                m_grid[i * x * z + j * z + k].m_part.clear();
+    for (int i=0; i < x*y*z; i++) {
+        for (int idx=0; idx < m_grid[i].m_part.size(); idx++) {
+            if (!m_grid[i].checkIfParticleInside(*m_grid[i].m_part[idx].get())) {
+                need_to_move.emplace_back(std::move(m_grid[i].m_part[idx]));
             }
         }
     }
 
-    for (int p_idx = 0; p_idx < m_part.size(); p_idx++) {
-        float p_x = m_part[p_idx].pos(0);
-        float p_y = m_part[p_idx].pos(1);
-        float p_z = m_part[p_idx].pos(2);
+    // THEN use the erase-remove idiom to get rid of null shared pointers
+    // https://stackoverflow.com/questions/11460810/finding-null-pointers-in-std-vectors
+    // https://cplusplus.com/reference/memory/shared_ptr/operator%20bool/
+    for (int i=0; i < x*y*z; i++) {
+        m_grid[i].m_part.erase(std::remove_if(m_grid[i].m_part.begin(), m_grid[i].m_part.end(),
+                                              [](auto &ptr){ return (bool)ptr;}
+                              ));
+    }
 
-        int x = grid_dims(0);
-        int y = grid_dims(1);
-        int z = grid_dims(2);
-        for (int i=0; i < x; i++) {
-            for (int j=0; j < y; j++) {
-                for (int k = 0; k < z; k++) {
-                    if (m_grid[i * x * z + j * z + k].checkIfParticleInside(m_part[p_idx])) {
-                        m_grid[i * x * z + j * z + k].m_part.push_back(std::make_shared<Particle>(m_part[p_idx]));
-                    }
+//    int x = grid_dims(0);
+//    int y = grid_dims(1);
+//    int z = grid_dims(2);
+//    for (int i=0; i < x; i++) {
+//        for (int j=0; j < y; j++) {
+//            for (int k = 0; k < z; k++) {
+//                for (int idx=0; idx < m_grid[i * x * z + j * z + k].m_part.size(); idx++) {
+//                    if (!m_grid[i * x * z + j * z + k].checkIfParticleInside(*m_grid[i * x * z + j * z + k].m_part[idx].get())) {
+//                        need_to_move.emplace_back(std::move(m_grid[i * x * z + j * z + k].m_part[idx]));
+//                        m_grid[i * x * z + j * z + k].m_part.erase(m_grid[i * x * z + j * z + k].m_part.begin() + idx);
+//                    }
+//                }
+//            }
+//        }
+//    }
+
+    // figure out where each of those smart pointers belongs and MOVE them to cells
+    for (int i=0; i < x; i++) {
+        for (int j=0; j < y; j++) {
+            for (int k = 0; k < z; k++) {
+                for (int idx=0; idx < need_to_move.size(); idx++) {
+
                 }
             }
         }
     }
+
 #if PRINT_VERBOSE
     std::cout << "Done reassigning particles to the appropriate cells." << std::endl;
 #endif
