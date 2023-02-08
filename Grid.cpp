@@ -133,6 +133,21 @@ void Grid::updatePositions() {
 #endif
 }
 
+// helper function to check for overlap in Particle* lists
+// adapted from https://stackoverflow.com/questions/19483663/vector-intersection-in-c
+std::vector<Particle*> intersection(std::vector<Particle*> v1,
+                                      std::vector<Particle*> v2){
+    std::vector<Particle*> v3;
+
+    std::sort(v1.begin(), v1.end());
+    std::sort(v2.begin(), v2.end());
+
+    std::set_intersection(v1.begin(),v1.end(),
+                          v2.begin(),v2.end(),
+                          back_inserter(v3));
+    return v3;
+}
+
 // AWFUL way to do this, just for prototyping
 void Grid::reassignParticlesToCells() {
 
@@ -172,11 +187,15 @@ void Grid::reassignParticlesToCells() {
     // flipped loop order because moves make elements of need_to_move point to null
     for (int idx=0; idx < need_to_move.size(); idx++) {
         for (int i=0; i < x*y*z; i++) {
-            std::cout << std::endl;
+//    for (int idx=0; idx < need_to_move.size(); idx++) {
+//        for (int i=0; i < x*y*z; i++) {
 //            for (auto a : need_to_move) std::cout << a << "\n";
-            if (m_grid[i].checkIfParticleInside(need_to_move[idx]->pos)) {
-                m_grid[i].m_part.push_back(need_to_move[idx]);
-                need_to_move[idx] = nullptr;
+//            std::cout << "overlap: " << intersection(need_to_move, m_grid[i].m_part).size() << std::endl;
+            if (need_to_move[idx] != nullptr) {
+                if (m_grid[i].checkIfParticleInside(need_to_move[idx]->pos)) {
+                    m_grid[i].m_part.push_back(need_to_move[idx]);
+                    need_to_move[idx] = nullptr;
+                }
             }
         }
     }
