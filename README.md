@@ -1,4 +1,4 @@
-# dsmc
+# DSMC
 
 # Overview
 
