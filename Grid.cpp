@@ -148,7 +148,6 @@ std::vector<Particle*> intersection(std::vector<Particle*> v1,
     return v3;
 }
 
-// AWFUL way to do this, just for prototyping
 void Grid::reassignParticlesToCells() {
 
     // have each Cell MOVE pointers for Particles that aren't inside them anymore
@@ -168,7 +167,7 @@ void Grid::reassignParticlesToCells() {
         }
     }
 
-    // THEN use the erase-remove idiom to get rid of null shared pointers
+    // THEN use the erase-remove idiom to get rid of null pointers
     // https://stackoverflow.com/questions/11460810/finding-null-pointers-in-std-vectors
     // https://cplusplus.com/reference/memory/shared_ptr/operator%20bool/
     for (int i=0; i < x*y*z; i++) {
@@ -181,16 +180,8 @@ void Grid::reassignParticlesToCells() {
                                                     }), m_grid[i].m_part.end());
     }
 
-//    std::cout << "tried to erase nulls, are there any left? -> " << anyNullParticlePointers() << std::endl;
-//    for (auto a : need_to_move) std::cout << a << "\n";
-
-    // flipped loop order because moves make elements of need_to_move point to null
     for (int idx=0; idx < need_to_move.size(); idx++) {
         for (int i=0; i < x*y*z; i++) {
-//    for (int idx=0; idx < need_to_move.size(); idx++) {
-//        for (int i=0; i < x*y*z; i++) {
-//            for (auto a : need_to_move) std::cout << a << "\n";
-//            std::cout << "overlap: " << intersection(need_to_move, m_grid[i].m_part).size() << std::endl;
             if (need_to_move[idx] != nullptr) {
                 if (m_grid[i].checkIfParticleInside(need_to_move[idx]->pos)) {
                     m_grid[i].m_part.push_back(need_to_move[idx]);

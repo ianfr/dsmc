@@ -11,11 +11,14 @@ int main() {
 #endif
     std::string out_file = "particle.csv";
 
+    int skip_every = 100; // skip every _ steps when writing out
+    int n_zero = 10; // 10 digits for indexing
+
     Grid grid;
     grid.f_n = 8*5000; // number of particles
     grid.grid_dims = {2, 2, 2};
     grid.delta_t = 0.1;
-    grid.num_dt = 100;
+    grid.num_dt = 10000;
     grid.v_max = 10.0; // max particle velocity
     grid.d = 0.001; // particle diameter
     grid.cell_length = 10.0;
@@ -24,17 +27,19 @@ int main() {
     grid.create();
     grid.writeParticlesToDisk(out_dir + std::string("afterCreate-") + out_file);
 
+    int write_iter = 0;
     for (int iter=0; iter < grid.num_dt; iter++) {
         std::cout << "iter: " << iter << std::endl;
         grid.calculateCollisionsRejectionSampling();
-        //    grid.writeParticlesToDisk(out_dir + std::string("afterCollisions-") + out_file);
         grid.updatePositions();
-        //    grid.writeParticlesToDisk(out_dir + std::string("afterUpdatePositions-") + out_file);
         grid.enforceDomain();
         grid.reassignParticlesToCells();
-//        std::cout << "\n" << grid.str() << "\n";
-        std::string iter_str = std::to_string(iter);
-        grid.writeParticlesToDisk(out_dir + iter_str + std::string("-") + out_file);
+        std::string iter_str = std::to_string(write_iter);
+        auto new_str = std::string(n_zero - std::min(n_zero, (int)iter_str.length()), '0') + iter_str;
+        if (iter % skip_every == 0) {
+            grid.writeParticlesToDisk(out_dir + new_str + std::string("-") + out_file);
+            write_iter += 1;
+        }
     }
 
     return 0;
