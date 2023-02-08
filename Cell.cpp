@@ -63,11 +63,11 @@ void Cell::updatePositions() {
     }
 }
 
-bool Cell::checkIfParticleInside(Particle &p) {
+bool Cell::checkIfParticleInside(Vector3f pos) {
 
-    if (p.pos(0) > x_b[0] && p.pos(0) < x_b[1]) {
-        if (p.pos(1) > y_b[0] && p.pos(1) < y_b[1]) {
-            if (p.pos(2) > z_b[0] && p.pos(2) < z_b[1]) {
+    if (pos(0) > x_b[0] && pos(0) < x_b[1]) {
+        if (pos(1) > y_b[0] && pos(1) < y_b[1]) {
+            if (pos(2) > z_b[0] && pos(2) < z_b[1]) {
                 return true;
             }
         }
@@ -75,10 +75,14 @@ bool Cell::checkIfParticleInside(Particle &p) {
     return false;
 }
 
+// not modifying the particles for some reason
 void Cell::initRandParticles(std::vector<std::shared_ptr<Particle>> &parts) {
+//void Cell::initRandParticles(std::vector<std::shared_ptr<Particle>> parts) {
     m_part.reserve(parts.size());
-    m_part = parts;
-    for (auto &p : parts) {
+//    m_part = parts;
+    m_part = std::move(parts);
+//    for (auto &p : parts) {
+    for (auto &p : m_part) {
         // Random() generates random vectors with elements in [-1,1]
         Vector3f r = Vector3f::Random() * cell_length;
         Vector3f a = { ((x_b[0] + x_b[1]) / 2.0),
@@ -86,6 +90,7 @@ void Cell::initRandParticles(std::vector<std::shared_ptr<Particle>> &parts) {
                        ((z_b[0] + z_b[1]) / 2.0)}; // center of cell
         p->pos = a + r;
         p->vel = Vector3f::Random() * v_mult;
+        std::cout << p->pos << std::endl;
     }
 }
 

@@ -36,7 +36,7 @@ public:
     // Methods
     void calculateCollisionsRejectionSampling(); // calculate new velocities but don't update
     void updatePositions(); // update the positions with euler (ok b/c no gravity for now)
-    bool checkIfParticleInside(Particle &p); // check if a particle belongs in this box
+    bool checkIfParticleInside(Vector3f pos); // check if a particle belongs in this box
     void initRandParticles(std::vector<std::shared_ptr<Particle>> &parts); // create random particles in this cell
     std::string str(); // string representation
 };

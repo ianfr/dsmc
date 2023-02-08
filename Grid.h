@@ -36,6 +36,8 @@ public:
     void enforceDomain(); // make sure particles don't leave the domain by reflecting them back in
     void writeParticlesToDisk(std::string filename);
     std::string str(); // get string representation of grid
+    bool anyNullParticlePointers();
+    bool allParticlesInsideCells();
 
 private:
     void setCellBoundaries();

@@ -21,18 +21,19 @@ int main() {
     grid.v_mult = 1.0; // initial velocity multiplier
 
     grid.create();
-
-    std::cout << grid.str();
+    grid.writeParticlesToDisk(out_dir + std::string("afterCreate-") + out_file);
 
     // loop...
     grid.calculateCollisionsRejectionSampling();
-    std::cout << grid.str();
+    grid.writeParticlesToDisk(out_dir + std::string("afterCollisions-") + out_file);
     grid.updatePositions();
-    std::cout << grid.str();
+    grid.writeParticlesToDisk(out_dir + std::string("afterUpdatePositions-") + out_file);
+    std::cout << "ANY NULL: " << grid.anyNullParticlePointers() << std::endl;
     grid.reassignParticlesToCells();
-    std::cout << grid.str();
+    std::cout << "ANY NULL: " << grid.anyNullParticlePointers() << std::endl;
+    std::cout << "\n" << grid.str() << "\n";
     grid.enforceDomain();
-    std::cout << grid.str();
+    std::cout << "\n" << grid.str() << "\n";
     grid.writeParticlesToDisk(out_dir + out_file);
 
 
