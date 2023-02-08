@@ -14,11 +14,10 @@
 class Grid {
 public:
     // Data
-    // m_grid[i][j[k] = *(m_grid
-    Cell* m_grid; // 3D Cell grid;
+    Cell* m_grid; // 3D Cell grid; m_grid(i,j,k) = m_grid[i * x * z + j * z + k]
     std::vector<Particle> m_part; // global list of all particles
-//    int n; // number of particles
     Vector3i grid_dims; // the number of cells in the x, y, and z directions
+    int num_dt;
 
     // Cell static variables
     float delta_t; // timestep

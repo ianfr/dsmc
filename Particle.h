@@ -7,7 +7,7 @@
 
 #include "Eigen3/Eigen/Dense"
 
-#define PRINT_VERBOSE 1
+#define PRINT_VERBOSE 0
 
 using namespace Eigen;
 

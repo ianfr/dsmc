@@ -93,7 +93,7 @@ void Grid::addParticlesToCells() {
             m_grid[i].m_part[idx]->vel = Vector3f::Random() * v_mult;
         }
         plist_idx += num_p_per_cell;
-        for (auto p : m_grid[i].m_part) std::cout << p->pos << std::endl;
+//        for (auto p : m_grid[i].m_part) std::cout << p->pos << std::endl;
     }
 
 #if PRINT_VERBOSE
@@ -181,7 +181,7 @@ void Grid::reassignParticlesToCells() {
                                                     }), m_grid[i].m_part.end());
     }
 
-    std::cout << "tried to erase nulls, are there any left? -> " << anyNullParticlePointers() << std::endl;
+//    std::cout << "tried to erase nulls, are there any left? -> " << anyNullParticlePointers() << std::endl;
 //    for (auto a : need_to_move) std::cout << a << "\n";
 
     // flipped loop order because moves make elements of need_to_move point to null
