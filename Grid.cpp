@@ -200,12 +200,29 @@ void Grid::reassignParticlesToCells() {
         }
     }
 
+    // make sure there are no un-assigned particles
+    need_to_move.erase(std::remove_if(need_to_move.begin(), need_to_move.end(),
+                                [](auto ptr){
+                                    if (ptr == nullptr) {
+                                        return true;
+                                    }
+                                    return false;
+                                }), need_to_move.end());
+    if (need_to_move.size() > 0) {
+        std::cout << "[ERROR]: unassigned particles: " << need_to_move.size() << "\n";
+        for (auto p : need_to_move) {
+            std::cout << p->pos << "\n";
+        }
+        exit(1);
+    }
+
 #if PRINT_VERBOSE
     std::cout << "Done reassigning particles to the appropriate cells." << std::endl;
 #endif
 }
 
 void Grid::enforceDomain() {
+    float eps = 1e-8;
     float x_min = 0;
     float y_min = 0;
     float z_min = 0;
@@ -217,29 +234,29 @@ void Grid::enforceDomain() {
         float p_y = p.pos(1);
         float p_z = p.pos(2);
 
-        if (p_x > x_max) {
-            p.pos(0) = x_max;
+        if (p_x >= x_max) {
+            p.pos(0) = x_max - eps;
             p.vel(0) *= -1;
         }
-        if (p_y > y_max) {
-            p.pos(1) = y_max;
+        if (p_y >= y_max) {
+            p.pos(1) = y_max - eps;
             p.vel(1) *= -1;
         }
-        if (p_z > z_max) {
-            p.pos(2) = z_max;
+        if (p_z >= z_max) {
+            p.pos(2) = z_max - eps;
             p.vel(2) *= -1;
         }
 
-        if (p_x < x_min) {
-            p.pos(0) = x_min;
+        if (p_x <= x_min) {
+            p.pos(0) = x_min + eps;
             p.vel(0) *= -1;
         }
-        if (p_y < y_min) {
-            p.pos(1) = y_min;
+        if (p_y <= y_min) {
+            p.pos(1) = y_min + eps;
             p.vel(1) *= -1;
         }
-        if (p_z < z_min) {
-            p.pos(2) = z_min;
+        if (p_z <= z_min) {
+            p.pos(2) = z_min + eps;
             p.vel(2) *= -1;
         }
 

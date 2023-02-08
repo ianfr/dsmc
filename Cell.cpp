@@ -65,9 +65,9 @@ void Cell::updatePositions() {
 
 bool Cell::checkIfParticleInside(Vector3f pos) {
 
-    if (pos(0) > x_b[0] && pos(0) < x_b[1]) {
-        if (pos(1) > y_b[0] && pos(1) < y_b[1]) {
-            if (pos(2) > z_b[0] && pos(2) < z_b[1]) {
+    if (pos(0) >= x_b[0] && pos(0) <= x_b[1]) {
+        if (pos(1) >= y_b[0] && pos(1) <= y_b[1]) {
+            if (pos(2) >= z_b[0] && pos(2) <= z_b[1]) {
                 return true;
             }
         }
