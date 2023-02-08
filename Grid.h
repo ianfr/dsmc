@@ -37,7 +37,7 @@ public:
     void writeParticlesToDisk(std::string filename);
     std::string str(); // get string representation of grid
     bool anyNullParticlePointers();
-    bool allParticlesInsideCells();
+//    bool allParticlesInsideCells();
 
 private:
     void setCellBoundaries();

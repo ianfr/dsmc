@@ -29,10 +29,12 @@ int main() {
     grid.updatePositions();
     grid.writeParticlesToDisk(out_dir + std::string("afterUpdatePositions-") + out_file);
     std::cout << "ANY NULL: " << grid.anyNullParticlePointers() << std::endl;
+
+    grid.enforceDomain();
     grid.reassignParticlesToCells();
     std::cout << "ANY NULL: " << grid.anyNullParticlePointers() << std::endl;
     std::cout << "\n" << grid.str() << "\n";
-    grid.enforceDomain();
+//    grid.enforceDomain();
     std::cout << "\n" << grid.str() << "\n";
     grid.writeParticlesToDisk(out_dir + out_file);
 

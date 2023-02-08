@@ -79,11 +79,21 @@ void Grid::addParticlesToCells() {
 //        }
 //    }
     for (int i = 0; i < x*y*z; i++) {
-        m_grid[i].m_part.reserve(num_p_per_cell);
+//        m_grid[i].m_part.reserve(num_p_per_cell);
         for (int idx = 0; idx < num_p_per_cell; idx++) {
-            m_grid[i].m_part[idx] = std::make_shared<Particle>(m_part[plist_idx + idx]);
+            m_grid[i].m_part.push_back(&m_part[plist_idx + idx]);
+            Vector3f r = Vector3f::Random() * cell_length;
+            auto x_b = m_grid[i].x_b;
+            auto y_b = m_grid[i].y_b;
+            auto z_b = m_grid[i].z_b;
+            Vector3f a = { ((x_b[0] + x_b[1]) / 2.0),
+                           ((y_b[0] + y_b[1]) / 2.0),
+                           ((z_b[0] + z_b[1]) / 2.0)}; // center of cell
+            m_grid[i].m_part[idx]->pos = a + r;
+            m_grid[i].m_part[idx]->vel = Vector3f::Random() * v_mult;
         }
         plist_idx += num_p_per_cell;
+        for (auto p : m_grid[i].m_part) std::cout << p->pos << std::endl;
     }
 
 #if PRINT_VERBOSE
@@ -126,24 +136,19 @@ void Grid::updatePositions() {
 // AWFUL way to do this, just for prototyping
 void Grid::reassignParticlesToCells() {
 
-    // have each Cell MOVE smart pointers for Particles that aren't inside them anymore
-    std::vector<std::shared_ptr<Particle>> need_to_move;
+    // have each Cell MOVE pointers for Particles that aren't inside them anymore
+    std::vector<Particle*> need_to_move;
 
     // access the grid as a flat list
     // move
     int x = grid_dims(0);
     int y = grid_dims(1);
     int z = grid_dims(2);
-    int need_idx = 0;
     for (int i=0; i < x*y*z; i++) {
         for (int idx=0; idx < m_grid[i].m_part.size(); idx++) {
-//            if (!m_grid[i].checkIfParticleInside(*m_grid[i].m_part[idx].get())) {
             if (!m_grid[i].checkIfParticleInside(m_grid[i].m_part[idx]->pos)) {
-//                need_to_move.emplace_back(std::move(m_grid[i].m_part[idx]));
-                need_to_move.push_back(std::shared_ptr<Particle>());
-                need_to_move[need_idx] = m_grid[i].m_part[idx];
+                need_to_move.push_back(m_grid[i].m_part[idx]);
                 m_grid[i].m_part[idx] = nullptr;
-                need_idx += 1;
             }
         }
     }
@@ -154,7 +159,7 @@ void Grid::reassignParticlesToCells() {
     for (int i=0; i < x*y*z; i++) {
         m_grid[i].m_part.erase(std::remove_if(m_grid[i].m_part.begin(), m_grid[i].m_part.end(),
                                               [](auto ptr){
-                                                        if (ptr.get() == nullptr) {
+                                                        if (ptr == nullptr) {
                                                             return true;
                                                         }
                                                         return false;
@@ -162,38 +167,16 @@ void Grid::reassignParticlesToCells() {
     }
 
     std::cout << "tried to erase nulls, are there any left? -> " << anyNullParticlePointers() << std::endl;
-    for (auto a : need_to_move) std::cout << a << "\n";
+//    for (auto a : need_to_move) std::cout << a << "\n";
 
-//    need_to_move.erase(std::remove_if(need_to_move.begin(), need_to_move.end(),
-//                                          [](auto ptr){
-//                                              if (ptr) {
-//                                                  return true;
-//                                              }
-//                                              return false;
-//                                          }), need_to_move.end());
-
-    // figure out where each of those smart pointers belongs and MOVE them to cells
-//    for (int i=0; i < x*y*z; i++) {
-//        for (int idx=0; idx < need_to_move.size(); idx++) {
-//            if (m_grid[i].checkIfParticleInside(*need_to_move[idx].get())) {
-//                m_grid[i].m_part.emplace_back(std::move(need_to_move[idx]));
-//            }
-//        }
-//    }
-//
     // flipped loop order because moves make elements of need_to_move point to null
     for (int idx=0; idx < need_to_move.size(); idx++) {
         for (int i=0; i < x*y*z; i++) {
             std::cout << std::endl;
-            for (auto a : need_to_move) std::cout << a << "\n";
-            int part_idx = m_grid[i].m_part.size();
-//            if (m_grid[i].checkIfParticleInside(*need_to_move[idx].get())) {
+//            for (auto a : need_to_move) std::cout << a << "\n";
             if (m_grid[i].checkIfParticleInside(need_to_move[idx]->pos)) {
-//                m_grid[i].m_part.emplace_back(std::move(need_to_move[idx]));
-                m_grid[i].m_part.push_back(std::shared_ptr<Particle>());
-                m_grid[i].m_part[part_idx] = need_to_move[idx];
+                m_grid[i].m_part.push_back(need_to_move[idx]);
                 need_to_move[idx] = nullptr;
-                part_idx += 1;
             }
         }
     }

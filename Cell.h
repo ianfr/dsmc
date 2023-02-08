@@ -28,7 +28,7 @@ public:
     inline static float cell_length;
 
     // Data
-    std::vector<std::shared_ptr<Particle>> m_part; // which members of the master list we're responsible for this iteration
+    std::vector<Particle*> m_part; // which members of the master list we're responsible for this iteration
     std::array<float,2> x_b; // x bounds: min,max
     std::array<float,2> y_b;
     std::array<float,2> z_b;
