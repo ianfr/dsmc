@@ -1,35 +1,67 @@
 #include <iostream>
+#include <cmath>
+#include <math.h>
+#include <stdlib.h>
 
 #include "Grid.h"
 
 int main() {
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-    std::string out_dir = R"(C:\Users\windowsuser\iCloudDrive\Projects\coding\monte-carlo\dsmc\OUT\)";
+//    std::string out_dir = R"(C:\Users\windowsuser\iCloudDrive\Projects\coding\monte-carlo\dsmc\OUT\)";
+    std::string out_dir = R"(C:\Users\windowsuser\Documents\DSMC_OUT\)";
 #else
-    std::string out_dir = "/Users/ian/Library/Mobile Documents/com~apple~CloudDocs/Projects/coding/monte-carlo/dsmc/OUT/";
+    std::string out_dir = "/Users/ian/Downloads/DSMC_OUT/";
+    std::string cmd = "rm " + out_dir + "*.csv";
+    std::system(cmd.c_str());
 #endif
     std::string out_file = "particle.csv";
 
-    int skip_every = 100; // skip every _ steps when writing out
-    int n_zero = 10; // 10 digits for indexing
+    int skip_every = 1; // skip every _ steps when writing out
+    int n_zero = 10; // 10 digits for indexing output CSV series
 
     Grid grid;
-    grid.f_n = 8*5000; // number of particles
-    grid.grid_dims = {2, 2, 2};
-    grid.delta_t = 0.1;
-    grid.num_dt = 10000;
-    grid.v_max = 10.0; // max particle velocity
-    grid.d = 0.001; // particle diameter
-    grid.cell_length = 10.0;
-    grid.v_mult = 1.0; // initial velocity multiplier
+
+
+    double boltz = 1.3806e-23; // J/K
+    double mass = 6.63e-26; // mass argon
+    double diam = 3.66e-10; // eff diam argon
+    double T = 273; // temperature (K)
+    double density = 1.78; // density of argon at STP (kg/m^3)
+    double L = 100 * 1e-6; // x microns
+
+    grid.d = diam; // kinetic particle diameter
+    grid.N = 1e5;
+    grid.N_ef = (density/mass)*pow(L,3)/grid.N;
+    std::cout << "Each particle represents " << grid.N_ef << " molecules/atoms\n";
+    grid.num_dens = density;
+    grid.V = L*L*L;
+    std::cout << "System volume (V): " << grid.V << std::endl;
+
+    double ncell = 2; // number of cells in ONE dimension
+    grid.cell_length = L / ncell;
+
+    double v_init = sqrt(3*boltz*T/mass);
+    grid.v_mult = v_init;
+
+    grid.a = 0.2;
+    grid.v_max = 3*v_init; // max particle velocity
+    grid.num_dt = 1e2;
 
     grid.create();
     grid.writeParticlesToDisk(out_dir + std::string("afterCreate-") + out_file);
 
+    std::cout << "Particle width (d): " << grid.d << "\n";
+    std::cout << "Mean free path: " << grid.lambda << std::endl;
+    std::cout << "Cell length: " << grid.cell_length << "\n";
+    std::cout << "Grid dimension (for cube): " << grid.dim << "\n";
+    std::cout << "Characteristic length: " << grid.charlen<< std::endl;
+    std::cout << "Average speed: " << grid.mean_v << std::endl;
+    std::cout << "Timestep: " << grid.delta_t << std::endl;
+
+
     int write_iter = 0;
     for (int iter=0; iter < grid.num_dt; iter++) {
-        std::cout << "iter: " << iter << std::endl;
         grid.calculateCollisionsRejectionSampling();
         grid.updatePositions();
         grid.enforceDomain();

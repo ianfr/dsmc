@@ -18,16 +18,27 @@ public:
     std::vector<Particle> m_part; // global list of all particles
     Vector3i grid_dims; // the number of cells in the x, y, and z directions
     int num_dt;
+    int dim;
+    double lambda; // mean free path
+    double charlen; // characteristic length
+    double mean_v; // mean velocity
+    double a; // multiplier for timestep calculation
+    double a_len; // multiplier for cell size
+    int N; // the number of particles that are actually simulated
+    double V; // system volume
+    double num_dens; // number density; V = (N*N_ef)/num_dens; num_dens = N_phys_total / V
+
 
     // Cell static variables
-    float delta_t; // timestep
-    float v_max; // maximum particle velocity
-    int f_n; // number of molecules
-    float d; // particle diameter, uniform
-    float cell_length; // length of one side of a (CUBIC) cell
-    float v_mult; // initial velocity multiplier
+    double delta_t; // timestep
+    double v_max; // maximum particle velocity
+    int N_ef; // the number of physical particles that each simulated particle represents
+    double d; // particle diameter, uniform
+    double cell_length; // length of one side of a (CUBIC) cell
+    double v_mult; // initial velocity multiplier
 
     // Methods
+    void calculateSystemVolume();
     void create();
     void calculateCollisionsRejectionSampling(); // calculate new velocities but don't update
     void updatePositions(); // update the positions with euler (ok b/c no gravity for now)
@@ -36,7 +47,6 @@ public:
     void writeParticlesToDisk(std::string filename);
     std::string str(); // get string representation of grid
     bool anyNullParticlePointers();
-//    bool allParticlesInsideCells();
 
 private:
     void setCellBoundaries();
