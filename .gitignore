@@ -1,0 +1,6 @@
+Release/
+Eigen3/
+Debug/
+DSMC_OUT/
+
+.DS_Store

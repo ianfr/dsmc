@@ -11,7 +11,8 @@ int main() {
 //    std::string out_dir = R"(C:\Users\windowsuser\iCloudDrive\Projects\coding\monte-carlo\dsmc\OUT\)";
     std::string out_dir = R"(C:\Users\windowsuser\Documents\DSMC_OUT\)";
 #else
-    std::string out_dir = "/Users/ian/Downloads/DSMC_OUT/";
+    // std::string out_dir = "/Users/ian/Downloads/DSMC_OUT/";
+    std::string out_dir = "../DSMC_OUT/";
     std::string cmd = "rm " + out_dir + "*.csv";
     std::system(cmd.c_str());
 #endif
