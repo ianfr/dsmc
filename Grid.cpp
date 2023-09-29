@@ -12,7 +12,7 @@ void Grid::create() {
         m_part.push_back(tmp);
     }
 
-    lambda = V / (sqrt(2) * N_ef * PI * d * d);
+    // lambda = V / (sqrt(2) * N_ef * PI * d * d);
     charlen = std::pow((cell_length * V)/N_ef, 1.0/3.0);
 
     // Allocate memory for the 3D grid
