@@ -77,6 +77,9 @@ public:
     // Synchronization
     void waitForCompletion();
     
+    // NaN checking - throws exception if NaNs detected
+    void checkForNaNs(uint32_t frameNumber);
+    
     // Getters
     uint32_t getNumParticles() const { return m_numParticles; }
     uint32_t getNumCells() const { return m_numCells; }

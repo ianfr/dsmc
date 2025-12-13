@@ -8,7 +8,7 @@
 #include <iostream>
 #include <numeric>
 
-MetalCompute::MetalCompute() 
+MetalCompute::MetalCompute()
     : m_device(nil)
     , m_commandQueue(nil)
     , m_library(nil)
@@ -56,13 +56,13 @@ bool MetalCompute::loadShaders(const std::string& metalLibPath) {
         std::cout << "Metallib not found, compiling from source..." << std::endl;
         
         // Try to find and compile the .metal source file
-        NSString* sourcePath = [[libPath stringByDeletingLastPathComponent] 
+        NSString* sourcePath = [[libPath stringByDeletingLastPathComponent]
                                 stringByAppendingPathComponent:@"Shaders.metal"];
         
         // Also try Metal subdirectory
         if (![[NSFileManager defaultManager] fileExistsAtPath:sourcePath]) {
-            sourcePath = [[[libPath stringByDeletingLastPathComponent] 
-                          stringByAppendingPathComponent:@"Metal"] 
+            sourcePath = [[[libPath stringByDeletingLastPathComponent]
+                          stringByAppendingPathComponent:@"Metal"]
                           stringByAppendingPathComponent:@"Shaders.metal"];
         }
         
@@ -116,7 +116,7 @@ id<MTLComputePipelineState> MetalCompute::createPipeline(const std::string& func
     id<MTLComputePipelineState> pipeline = [m_device newComputePipelineStateWithFunction:function error:&error];
     
     if (!pipeline) {
-        std::cerr << "Failed to create pipeline for " << functionName << ": " 
+        std::cerr << "Failed to create pipeline for " << functionName << ": "
                   << [[error localizedDescription] UTF8String] << std::endl;
         return nil;
     }
@@ -199,7 +199,7 @@ bool MetalCompute::buildAccelerationStructure(const std::vector<Triangle>& trian
     }
     
     // Create geometry descriptor for triangles
-    MTLAccelerationStructureTriangleGeometryDescriptor* geometryDesc = 
+    MTLAccelerationStructureTriangleGeometryDescriptor* geometryDesc =
         [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
     
     // Create vertex buffer (3 vertices per triangle, 3 floats per vertex)
@@ -230,7 +230,7 @@ bool MetalCompute::buildAccelerationStructure(const std::vector<Triangle>& trian
     geometryDesc.indexBuffer = nil;  // Non-indexed triangles
     
     // Create primitive acceleration structure descriptor
-    MTLPrimitiveAccelerationStructureDescriptor* accelDesc = 
+    MTLPrimitiveAccelerationStructureDescriptor* accelDesc =
         [MTLPrimitiveAccelerationStructureDescriptor descriptor];
     accelDesc.geometryDescriptors = @[geometryDesc];
     
@@ -528,6 +528,31 @@ void MetalCompute::runSimulationStep(uint32_t frameNumber, bool hasMesh) {
     
     // Phase 4: Domain boundary enforcement
     enforceDomain();
+    
+    // Check for NaNs (minimal overhead - only reads from shared buffer)
+    checkForNaNs(frameNumber);
+}
+
+void MetalCompute::checkForNaNs(uint32_t frameNumber) {
+    GPUParticle* particles = (GPUParticle*)m_particleBuffer.contents;
+    
+    for (uint32_t i = 0; i < m_numParticles; i++) {
+        // Check positions
+        if (std::isnan(particles[i].pos[0]) ||
+            std::isnan(particles[i].pos[1]) ||
+            std::isnan(particles[i].pos[2])) {
+            throw std::runtime_error("NaN detected in particle " + std::to_string(i) +
+                                   " position at frame " + std::to_string(frameNumber));
+        }
+        
+        // Check velocities
+        if (std::isnan(particles[i].vel[0]) ||
+            std::isnan(particles[i].vel[1]) ||
+            std::isnan(particles[i].vel[2])) {
+            throw std::runtime_error("NaN detected in particle " + std::to_string(i) +
+                                   " velocity at frame " + std::to_string(frameNumber));
+        }
+    }
 }
 
 void MetalCompute::waitForCompletion() {
