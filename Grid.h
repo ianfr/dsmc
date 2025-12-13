@@ -1,57 +1,67 @@
 //
-// Created by Ian Friedrichs on 2/1/23.
+// Grid.h
+// Metal-accelerated DSMC Grid
 //
 
 #ifndef DSMC_GRID_H
 #define DSMC_GRID_H
 
-#include "Cell.h"
-#include <iostream>
-#include <iterator>
+#include "MetalCompute.h"
+#include "Mesh.h"
 #include <string>
-#include <fstream>
+#include <vector>
+#include <memory>
 
 class Grid {
 public:
-    // Data
-    Cell* m_grid; // 3D Cell grid; m_grid(i,j,k) = m_grid[i * x * z + j * z + k]
-    std::vector<Particle> m_part; // global list of all particles
-    Vector3i grid_dims; // the number of cells in the x, y, and z directions
-    int num_dt;
-    int dim;
-    double lambda; // mean free path
-    double charlen; // characteristic length
-    double mean_v; // mean velocity
-    double a; // multiplier for timestep calculation
-    double a_len; // multiplier for cell size
-    int N; // the number of particles that are actually simulated
-    double V; // system volume
-    double num_dens; // number density; V = (N*N_ef)/num_dens; num_dens = N_phys_total / V
-
-
-    // Cell static variables
-    double delta_t; // timestep
-    double v_max; // maximum particle velocity
-    int N_ef; // the number of physical particles that each simulated particle represents
-    double d; // particle diameter, uniform
-    double cell_length; // length of one side of a (CUBIC) cell
-    double v_mult; // initial velocity multiplier
-
+    Grid();
+    ~Grid();
+    
+    // Configuration (set before calling create())
+    int N;                  // number of simulated particles
+    int N_ef;               // particles represented by each simulated particle
+    double V;               // system volume
+    double num_dens;        // number density
+    double d;               // particle diameter
+    double cell_length;     // cell side length
+    double v_mult;          // initial velocity multiplier
+    double v_max;           // maximum velocity
+    double a;               // timestep multiplier
+    int num_dt;             // number of timesteps
+    
+    // Computed values
+    double lambda;          // mean free path
+    double charlen;         // characteristic length
+    double mean_v;          // mean velocity
+    double delta_t;         // timestep
+    int dim;                // grid dimension (cells per side)
+    
     // Methods
-    void calculateSystemVolume();
+    bool initializeMetal(const std::string& shaderPath);
     void create();
-    void calculateCollisionsRejectionSampling(); // calculate new velocities but don't update
-    void updatePositions(); // update the positions with euler (ok b/c no gravity for now)
-    void reassignParticlesToCells(); // brute force ensure all the particles are assigned to appropriate cells
-    void enforceDomain(); // make sure particles don't leave the domain by reflecting them back in
-    void writeParticlesToDisk(std::string filename);
-    std::string str(); // get string representation of grid
-    bool anyNullParticlePointers();
-
+    void loadMesh(const std::string& meshPath);
+    void loadMesh(const Mesh& mesh);
+    void createTestSphere(float radius);
+    void createTestBox(float width, float height, float depth);
+    
+    // Simulation step (all on GPU)
+    void runSimulationStep(uint32_t frameNumber);
+    
+    // Output
+    void writeParticlesToDisk(const std::string& filename);
+    
+    // Get particle data for visualization
+    void getParticlePositions(std::vector<float>& positions);
+    
 private:
-    void setCellBoundaries();
-    void addParticlesToCells();
+    std::unique_ptr<MetalCompute> m_metal;
+    bool m_initialized;
+    bool m_hasMesh;
+    
+    // CPU-side particle storage for output
+    std::vector<GPUParticle> m_particles;
+    
+    void setupSimulationParams();
 };
 
-
-#endif //DSMC_GRID_H
+#endif // DSMC_GRID_H

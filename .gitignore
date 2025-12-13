@@ -1,6 +1,11 @@
+build/
 Release/
-Eigen3/
 Debug/
 DSMC_OUT/
 
 .DS_Store
+*.metallib
+*.air
+
+config.json
+build-xcode/
