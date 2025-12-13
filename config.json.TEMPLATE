@@ -1,0 +1,25 @@
+{
+    "simulation": {
+        "skip_every": 1,
+        "n_zero": 10,
+        "num_timesteps": 100
+    },
+    "physical_constants": {
+        "boltzmann": 1.3806e-23
+    },
+    "gas_properties": {
+        "mass": 6.63e-26,
+        "diameter": 3.66e-10,
+        "temperature": 273,
+        "density": 1.78
+    },
+    "domain": {
+        "length": 100e-6,
+        "num_cells_per_dim": 2
+    },
+    "particles": {
+        "num_particles": 100000,
+        "a_timestep": 0.2,
+        "v_max_multiplier": 3
+    }
+}

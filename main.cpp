@@ -2,8 +2,12 @@
 #include <cmath>
 #include <math.h>
 #include <stdlib.h>
+#include <fstream>
 
 #include "Grid.h"
+#include "json.hpp"
+
+using json = nlohmann::json;
 
 int main() {
 
@@ -18,36 +22,51 @@ int main() {
 #endif
     std::string out_file = "particle.csv";
 
-    int skip_every = 1; // skip every _ steps when writing out
-    int n_zero = 10; // 10 digits for indexing output CSV series
+    // Load configuration from JSON file
+    std::ifstream config_file("../config.json");
+    if (!config_file.is_open()) {
+        std::cerr << "Error: Could not open config.json" << std::endl;
+        return 1;
+    }
+    json config = json::parse(config_file);
+    config_file.close();
+
+    // Read simulation parameters
+    int skip_every = config["simulation"]["skip_every"];
+    int n_zero = config["simulation"]["n_zero"];
 
     Grid grid;
 
+    // Read physical constants and gas properties
+    double boltz = config["physical_constants"]["boltzmann"];
+    double mass = config["gas_properties"]["mass"];
+    double diam = config["gas_properties"]["diameter"];
+    double T = config["gas_properties"]["temperature"];
+    double density = config["gas_properties"]["density"];
+    double L = config["domain"]["length"];
 
-    double boltz = 1.3806e-23; // J/K
-    double mass = 6.63e-26; // mass argon
-    double diam = 3.66e-10; // eff diam argon
-    double T = 273; // temperature (K)
-    double density = 1.78; // density of argon at STP (kg/m^3)
-    double L = 100 * 1e-6; // x microns
+    // Read particle and domain settings
+    int ncell = config["domain"]["num_cells_per_dim"];
+    int num_particles = config["particles"]["num_particles"];
+    double a_timestep = config["particles"]["a_timestep"];
+    double v_max_mult = config["particles"]["v_max_multiplier"];
 
     grid.d = diam; // kinetic particle diameter
-    grid.N = 1e5;
+    grid.N = num_particles;
     grid.N_ef = (density/mass)*pow(L,3)/grid.N;
     std::cout << "Each particle represents " << grid.N_ef << " molecules/atoms\n";
     grid.num_dens = density;
     grid.V = L*L*L;
     std::cout << "System volume (V): " << grid.V << std::endl;
 
-    double ncell = 2; // number of cells in ONE dimension
     grid.cell_length = L / ncell;
 
     double v_init = sqrt(3*boltz*T/mass);
     grid.v_mult = v_init;
 
-    grid.a = 0.2;
-    grid.v_max = 3*v_init; // max particle velocity
-    grid.num_dt = 1e2;
+    grid.a = a_timestep;
+    grid.v_max = v_max_mult * v_init; // max particle velocity
+    grid.num_dt = config["simulation"]["num_timesteps"];
 
     grid.create();
     grid.writeParticlesToDisk(out_dir + std::string("afterCreate-") + out_file);
