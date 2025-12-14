@@ -78,7 +78,7 @@ public:
     void waitForCompletion();
     
     // NaN checking - throws exception if NaNs detected
-    void checkForNaNs(uint32_t frameNumber);
+    void checkForNaNs(uint32_t frameNumber, const char* phase);
     
     // Getters
     uint32_t getNumParticles() const { return m_numParticles; }

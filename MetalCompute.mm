@@ -7,6 +7,9 @@
 #import <Foundation/Foundation.h>
 #include <iostream>
 #include <numeric>
+#include <cmath>
+#include <stdexcept>
+#include <cassert>
 
 MetalCompute::MetalCompute()
     : m_device(nil)
@@ -432,32 +435,15 @@ void MetalCompute::computePrefixSum() {
 }
 
 void MetalCompute::reorderParticles() {
-    // Clear write offsets
-    id<MTLCommandBuffer> clearBuffer = [m_commandQueue commandBuffer];
-    id<MTLComputeCommandEncoder> clearEncoder = [clearBuffer computeCommandEncoder];
-    
-    [clearEncoder setComputePipelineState:m_clearBufferPipeline];
-    [clearEncoder setBuffer:m_cellWriteOffsetsBuffer offset:0 atIndex:0];
-    [clearEncoder setBytes:&m_numCells length:sizeof(uint32_t) atIndex:1];
-    
-    dispatchCompute(clearEncoder, m_clearBufferPipeline, m_numCells);
-    
-    [clearEncoder endEncoding];
-    [clearBuffer commit];
-    [clearBuffer waitUntilCompleted];
-    
-    // Reorder particles
+    // Reorder particles (Gather)
     id<MTLCommandBuffer> commandBuffer = [m_commandQueue commandBuffer];
     id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
     
     [encoder setComputePipelineState:m_reorderParticlesPipeline];
     [encoder setBuffer:m_particleBuffer offset:0 atIndex:0];
     [encoder setBuffer:m_particleBufferSorted offset:0 atIndex:1];
-    [encoder setBuffer:m_cellIndicesBuffer offset:0 atIndex:2];
-    [encoder setBuffer:m_particleIndicesBuffer offset:0 atIndex:3];
-    [encoder setBuffer:m_cellWriteOffsetsBuffer offset:0 atIndex:4];
-    [encoder setBuffer:m_cellStartsBuffer offset:0 atIndex:5];
-    [encoder setBuffer:m_paramsBuffer offset:0 atIndex:6];
+    [encoder setBuffer:m_particleIndicesBuffer offset:0 atIndex:2];
+    [encoder setBuffer:m_paramsBuffer offset:0 atIndex:3];
     
     dispatchCompute(encoder, m_reorderParticlesPipeline, m_numParticles);
     
@@ -511,29 +497,78 @@ void MetalCompute::intersectMesh(uint32_t frameNumber) {
 }
 
 void MetalCompute::runSimulationStep(uint32_t frameNumber, bool hasMesh) {
+    // Check initial state
+    checkForNaNs(frameNumber, "start_of_frame");
+    
     // Phase 1: Collisions (must happen before position update for proper DSMC)
     computeCellIndices();
-    countParticlesPerCell();
-    computePrefixSum();
+    
+    // CPU Sort
+    {
+        // Download cell indices
+        uint32_t* cellIndicesGPU = (uint32_t*)m_cellIndicesBuffer.contents;
+        std::vector<uint32_t> cellIndices(m_numParticles);
+        memcpy(cellIndices.data(), cellIndicesGPU, m_numParticles * sizeof(uint32_t));
+        
+        // Create and sort particle indices
+        std::vector<uint32_t> particleIndices(m_numParticles);
+        std::iota(particleIndices.begin(), particleIndices.end(), 0);
+        
+        std::stable_sort(particleIndices.begin(), particleIndices.end(),
+                         [&](uint32_t a, uint32_t b) {
+                             return cellIndices[a] < cellIndices[b];
+                         });
+                         
+        // Upload sorted particle indices
+        memcpy(m_particleIndicesBuffer.contents, particleIndices.data(), m_numParticles * sizeof(uint32_t));
+        
+        // Compute cell starts/ends on CPU
+        uint32_t* starts = (uint32_t*)m_cellStartsBuffer.contents;
+        uint32_t* ends = (uint32_t*)m_cellEndsBuffer.contents;
+        
+        // Initialize to 0
+        memset(starts, 0, m_numCells * sizeof(uint32_t));
+        memset(ends, 0, m_numCells * sizeof(uint32_t));
+        
+        if (m_numParticles > 0) {
+            uint32_t currentCell = cellIndices[particleIndices[0]];
+            starts[currentCell] = 0;
+            
+            for (uint32_t i = 1; i < m_numParticles; i++) {
+                uint32_t cell = cellIndices[particleIndices[i]];
+                if (cell != currentCell) {
+                    ends[currentCell] = i;
+                    starts[cell] = i;
+                    currentCell = cell;
+                }
+            }
+            ends[currentCell] = m_numParticles;
+        }
+    }
+    
+    // Reorder (Gather)
     reorderParticles();
+    checkForNaNs(frameNumber, "after_reorderParticles");
+    
     calculateCollisions(frameNumber);
+    checkForNaNs(frameNumber, "calculateCollisions");
     
     // Phase 2: Position update
     updatePositions();
+    checkForNaNs(frameNumber, "updatePositions");
     
     // Phase 3: Mesh intersection (if mesh exists)
     if (hasMesh && m_hasMesh) {
         intersectMesh(frameNumber);
+        checkForNaNs(frameNumber, "intersectMesh");
     }
     
     // Phase 4: Domain boundary enforcement
     enforceDomain();
-    
-    // Check for NaNs (minimal overhead - only reads from shared buffer)
-    checkForNaNs(frameNumber);
+    checkForNaNs(frameNumber, "enforceDomain");
 }
 
-void MetalCompute::checkForNaNs(uint32_t frameNumber) {
+void MetalCompute::checkForNaNs(uint32_t frameNumber, const char* phase) {
     GPUParticle* particles = (GPUParticle*)m_particleBuffer.contents;
     
     for (uint32_t i = 0; i < m_numParticles; i++) {
@@ -541,16 +576,34 @@ void MetalCompute::checkForNaNs(uint32_t frameNumber) {
         if (std::isnan(particles[i].pos[0]) ||
             std::isnan(particles[i].pos[1]) ||
             std::isnan(particles[i].pos[2])) {
+            std::cerr << "Particle " << i << " pos: ("
+                      << particles[i].pos[0] << ", "
+                      << particles[i].pos[1] << ", "
+                      << particles[i].pos[2] << ")" << std::endl;
+            std::cerr << "Particle " << i << " vel: ("
+                      << particles[i].vel[0] << ", "
+                      << particles[i].vel[1] << ", "
+                      << particles[i].vel[2] << ")" << std::endl;
             throw std::runtime_error("NaN detected in particle " + std::to_string(i) +
-                                   " position at frame " + std::to_string(frameNumber));
+                                   " position at frame " + std::to_string(frameNumber) +
+                                   " after " + phase);
         }
         
         // Check velocities
         if (std::isnan(particles[i].vel[0]) ||
             std::isnan(particles[i].vel[1]) ||
             std::isnan(particles[i].vel[2])) {
+            std::cerr << "Particle " << i << " pos: ("
+                      << particles[i].pos[0] << ", "
+                      << particles[i].pos[1] << ", "
+                      << particles[i].pos[2] << ")" << std::endl;
+            std::cerr << "Particle " << i << " vel: ("
+                      << particles[i].vel[0] << ", "
+                      << particles[i].vel[1] << ", "
+                      << particles[i].vel[2] << ")" << std::endl;
             throw std::runtime_error("NaN detected in particle " + std::to_string(i) +
-                                   " velocity at frame " + std::to_string(frameNumber));
+                                   " velocity at frame " + std::to_string(frameNumber) +
+                                   " after " + phase);
         }
     }
 }

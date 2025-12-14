@@ -14,9 +14,9 @@ using namespace raytracing;
 // =============================================================================
 
 struct Particle {
-    float3 pos;
+    packed_float3 pos;
     float  pad0;  // padding for alignment
-    float3 vel;
+    packed_float3 vel;
     float  pad1;
 };
 
@@ -67,7 +67,9 @@ float rand_range(thread uint& seed, float min_val, float max_val) {
 // Generate random unit vector on sphere
 float3 random_unit_sphere(thread uint& seed) {
     float theta = 2.0f * M_PI_F * rand_float(seed);
-    float phi = acos(1.0f - 2.0f * rand_float(seed));
+    float u = 1.0f - 2.0f * rand_float(seed);  // uniform in [-1, 1]
+    u = clamp(u, -1.0f, 1.0f);  // ensure valid range for acos
+    float phi = acos(u);
     return float3(
         sin(phi) * cos(theta),
         sin(phi) * sin(theta),
@@ -96,7 +98,9 @@ kernel void updatePositions(
 ) {
     if (gid >= params.num_particles) return;
     
-    particles[gid].pos += particles[gid].vel * params.delta_t;
+    float3 p = particles[gid].pos;
+    float3 v = particles[gid].vel;
+    particles[gid].pos = p + v * params.delta_t;
 }
 
 // Kernel 2: Enforce domain boundaries (replaces Grid::enforceDomain)
@@ -113,6 +117,12 @@ kernel void enforceDomain(
     float3 pos = p.pos;
     float3 vel = p.vel;
     float speed = length(vel);
+    
+    // Handle zero-speed case - give particle a small random velocity
+    if (speed < 0.0001f) {
+        speed = params.v_mult;
+        vel = speed * random_unit_sphere(seed);
+    }
     
     // X boundaries
     if (pos.x >= params.domain_max) {
@@ -226,7 +236,14 @@ kernel void reorderParticles(
     uint cellIdx = cellIndices[gid];
     uint particleIdx = particleIndices[gid];
     
+    // Bounds check on particleIdx
+    if (particleIdx >= params.num_particles) return;
+    
     uint writePos = cellStarts[cellIdx] + atomic_fetch_add_explicit(&cellWriteOffsets[cellIdx], 1u, memory_order_relaxed);
+    
+    // Bounds check on writePos
+    if (writePos >= params.num_particles) return;
+    
     particlesOut[writePos] = particlesIn[particleIdx];
 }
 
@@ -253,8 +270,11 @@ kernel void calculateCollisions(
     
     // Calculate number of collision candidates
     float pi = M_PI_F;
-    uint m_cand = uint((float(n_c) * float(n_c - 1) * float(params.f_n) * pi * 
+    uint m_cand = uint((float(n_c) * float(n_c - 1) * float(params.f_n) * pi *
                         params.d * params.d * params.v_max * params.delta_t) / (2.0f * params.V_c));
+    
+    // Limit to reasonable number of collision candidates
+    m_cand = min(m_cand, n_c * 10u);
     
     for (uint i = 0; i < m_cand; i++) {
         // Pick 2 random particles in this cell
@@ -275,6 +295,9 @@ kernel void calculateCollisions(
         float3 vel1 = particles[idx1].vel;
         float3 vel2 = particles[idx2].vel;
         float v_r = length(vel1 - vel2);
+        
+        // Skip if relative velocity is too small (avoid numerical issues)
+        if (v_r < 0.0001f) continue;
         
         if (v_r > v_tmp) {
             // Collision accepted - calculate new velocities
@@ -313,13 +336,17 @@ kernel void intersectMesh(
     if (gid >= params.num_particles) return;
     
     device Particle& p = particles[gid];
+    float speed = length(p.vel);
+    if (speed < 0.0001f) return;
     
     // Create ray from particle position in velocity direction
+    float3 velDir = p.vel / speed;  // safe since we checked speed above
+    
     ray r;
     r.origin = p.pos;
-    r.direction = normalize(p.vel);
+    r.direction = velDir;
     r.min_distance = 0.0001f;
-    r.max_distance = length(p.vel) * params.delta_t * 2.0f;  // look ahead
+    r.max_distance = speed * params.delta_t * 2.0f;  // look ahead
     
     // Create intersector
     intersector<triangle_data, instancing> intersector;
@@ -342,7 +369,7 @@ kernel void intersectMesh(
         
         // Get surface normal (simplified - assumes we have it in instance data)
         // In a full implementation, you'd interpolate vertex normals
-        float3 normal = result.triangle_front_facing ? 
+        float3 normal = result.triangle_front_facing ?
                         -normalize(r.direction) : normalize(r.direction);
         
         // Initialize random seed
