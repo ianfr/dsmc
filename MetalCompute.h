@@ -56,6 +56,7 @@ public:
     void uploadParticles(const std::vector<GPUParticle>& particles);
     void downloadParticles(std::vector<GPUParticle>& particles);
     void downloadPositions(std::vector<float>& positions);  // x,y,z,velmag per particle
+    void downloadCellIndices(std::vector<uint32_t>& cellIndices);  // cell index per particle
     void setSimulationParams(const SimulationParams& params);
     
     // Acceleration structure for ray tracing

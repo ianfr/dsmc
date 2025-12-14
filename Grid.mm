@@ -139,7 +139,7 @@ void Grid::loadMesh(const Mesh& mesh) {
     
     if (m_metal->buildAccelerationStructure(transformedMesh.getTriangles())) {
         m_hasMesh = true;
-        std::cout << "Mesh loaded with " << transformedMesh.getTriangleCount() 
+        std::cout << "Mesh loaded with " << transformedMesh.getTriangleCount()
                   << " triangles" << std::endl;
     } else {
         std::cerr << "Failed to build acceleration structure" << std::endl;
@@ -157,7 +157,7 @@ void Grid::createTestSphere(float radius) {
     
     if (m_metal->buildAccelerationStructure(sphere.getTriangles())) {
         m_hasMesh = true;
-        std::cout << "Test sphere created with " << sphere.getTriangleCount() 
+        std::cout << "Test sphere created with " << sphere.getTriangleCount()
                   << " triangles at center (" << center << ", " << center << ", " << center << ")"
                   << std::endl;
     }
@@ -198,14 +198,25 @@ void Grid::writeParticlesToDisk(const std::string& filename) {
     
     // Write to file
     std::ofstream outFile(filename, std::ios::trunc);
-    outFile << "x, y, z, velmag\n";
+    outFile << "x, y, z, velmag, cell\n";
     
     uint32_t numParticles = m_metal->getNumParticles();
+    float cellLen = static_cast<float>(cell_length);
+    uint32_t numCellsPerDim = static_cast<uint32_t>(dim);
+    
     for (uint32_t i = 0; i < numParticles; i++) {
-        outFile << positions[i * 4 + 0] << ", " 
-                << positions[i * 4 + 1] << ", " 
-                << positions[i * 4 + 2] << ", " 
-                << positions[i * 4 + 3] << "\n";
+        float x = positions[i * 4 + 0];
+        float y = positions[i * 4 + 1];
+        float z = positions[i * 4 + 2];
+        float velmag = positions[i * 4 + 3];
+        
+        // Compute cell index from current position
+        uint32_t ix = std::min(static_cast<uint32_t>(x / cellLen), numCellsPerDim - 1);
+        uint32_t iy = std::min(static_cast<uint32_t>(y / cellLen), numCellsPerDim - 1);
+        uint32_t iz = std::min(static_cast<uint32_t>(z / cellLen), numCellsPerDim - 1);
+        uint32_t cellIdx = ix * numCellsPerDim * numCellsPerDim + iy * numCellsPerDim + iz;
+        
+        outFile << x << ", " << y << ", " << z << ", " << velmag << ", " << cellIdx << "\n";
     }
     
     outFile.close();

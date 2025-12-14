@@ -301,6 +301,11 @@ void MetalCompute::downloadPositions(std::vector<float>& positions) {
     memcpy(positions.data(), m_positionsBuffer.contents, m_numParticles * 4 * sizeof(float));
 }
 
+void MetalCompute::downloadCellIndices(std::vector<uint32_t>& cellIndices) {
+    cellIndices.resize(m_numParticles);
+    memcpy(cellIndices.data(), m_cellIndicesBuffer.contents, m_numParticles * sizeof(uint32_t));
+}
+
 void MetalCompute::setSimulationParams(const SimulationParams& params) {
     m_params = params;
     

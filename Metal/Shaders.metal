@@ -98,9 +98,7 @@ kernel void updatePositions(
 ) {
     if (gid >= params.num_particles) return;
     
-    float3 p = particles[gid].pos;
-    float3 v = particles[gid].vel;
-    particles[gid].pos = p + v * params.delta_t;
+    particles[gid].pos += particles[gid].vel * params.delta_t;
 }
 
 // Kernel 2: Enforce domain boundaries (replaces Grid::enforceDomain)
@@ -224,27 +222,16 @@ kernel void computeCellOffsets(
 kernel void reorderParticles(
     device const Particle* particlesIn [[buffer(0)]],
     device Particle* particlesOut [[buffer(1)]],
-    device const uint* cellIndices [[buffer(2)]],
-    device const uint* particleIndices [[buffer(3)]],
-    device atomic_uint* cellWriteOffsets [[buffer(4)]],
-    device const uint* cellStarts [[buffer(5)]],
-    constant SimulationParams& params [[buffer(6)]],
+    device const uint* particleIndices [[buffer(2)]],
+    constant SimulationParams& params [[buffer(3)]],
     uint gid [[thread_position_in_grid]]
 ) {
     if (gid >= params.num_particles) return;
     
-    uint cellIdx = cellIndices[gid];
-    uint particleIdx = particleIndices[gid];
-    
-    // Bounds check on particleIdx
-    if (particleIdx >= params.num_particles) return;
-    
-    uint writePos = cellStarts[cellIdx] + atomic_fetch_add_explicit(&cellWriteOffsets[cellIdx], 1u, memory_order_relaxed);
-    
-    // Bounds check on writePos
-    if (writePos >= params.num_particles) return;
-    
-    particlesOut[writePos] = particlesIn[particleIdx];
+    uint srcIdx = particleIndices[gid];
+    if (srcIdx < params.num_particles) {
+        particlesOut[gid] = particlesIn[srcIdx];
+    }
 }
 
 // Kernel 7: Inter-particle collisions using rejection sampling (per-cell)
