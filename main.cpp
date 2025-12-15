@@ -124,6 +124,9 @@ int main(int argc, char* argv[]) {
         grid.createTestBox(size, size, size);
     }
 
+    // Remove any particles inside the mesh if it exists
+    grid.pruneParticlesInsideMesh();
+
     // Write initial state
     grid.writeParticlesToDisk(out_dir + "afterCreate-" + out_file);
 

@@ -71,6 +71,7 @@ public:
     void reorderParticles();
     void calculateCollisions(uint32_t frameNumber);
     void intersectMesh(uint32_t frameNumber);
+    uint32_t pruneParticlesInsideMesh(); // Called from Grid::pruneParticlesInsideMesh
     
     // Full simulation step
     void runSimulationStep(uint32_t frameNumber, bool hasMesh);
@@ -101,6 +102,7 @@ private:
     id<MTLComputePipelineState> m_reorderParticlesPipeline;
     id<MTLComputePipelineState> m_calculateCollisionsPipeline;
     id<MTLComputePipelineState> m_intersectMeshPipeline;
+    id<MTLComputePipelineState> m_pruneParticlesInsideMeshPipeline;
     id<MTLComputePipelineState> m_initializeParticlesPipeline;
     id<MTLComputePipelineState> m_copyParticlePositionsPipeline;
     id<MTLComputePipelineState> m_clearBufferPipeline;

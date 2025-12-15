@@ -43,6 +43,9 @@ public:
     void loadMesh(const Mesh& mesh);
     void createTestSphere(float radius);
     void createTestBox(float width, float height, float depth);
+
+    // Remove particles located inside the embedded mesh geometry
+    void pruneParticlesInsideMesh();
     
     // Simulation step (all on GPU)
     void runSimulationStep(uint32_t frameNumber);

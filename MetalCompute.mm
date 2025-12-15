@@ -98,6 +98,7 @@ bool MetalCompute::loadShaders(const std::string& metalLibPath) {
     m_reorderParticlesPipeline = createPipeline("reorderParticles");
     m_calculateCollisionsPipeline = createPipeline("calculateCollisions");
     m_intersectMeshPipeline = createPipeline("intersectMeshPrimitive");
+    m_pruneParticlesInsideMeshPipeline = createPipeline("pruneParticlesInsideMesh");
     m_initializeParticlesPipeline = createPipeline("initializeParticles");
     m_copyParticlePositionsPipeline = createPipeline("copyParticlePositions");
     m_clearBufferPipeline = createPipeline("clearBuffer");
@@ -499,6 +500,60 @@ void MetalCompute::intersectMesh(uint32_t frameNumber) {
     [encoder endEncoding];
     [commandBuffer commit];
     [commandBuffer waitUntilCompleted];
+}
+
+uint32_t MetalCompute::pruneParticlesInsideMesh() {
+    if (!m_hasMesh || !m_accelerationStructure) return 0;
+    if (m_numParticles == 0) return 0;
+    
+    // Create a buffer for keep flags (1 = keep, 0 = remove)
+    size_t flagsBufferSize = m_numParticles * sizeof(uint32_t);
+    id<MTLBuffer> keepFlagsBuffer = [m_device newBufferWithLength:flagsBufferSize
+                                                          options:MTLResourceStorageModeShared];
+    
+    // Initialize all flags to 1 (keep by default)
+    uint32_t* keepFlags = (uint32_t*)keepFlagsBuffer.contents;
+    for (uint32_t i = 0; i < m_numParticles; i++) {
+        keepFlags[i] = 1;
+    }
+    
+    // Run kernel to determine which particles to keep
+    id<MTLCommandBuffer> commandBuffer = [m_commandQueue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+    
+    [encoder setComputePipelineState:m_pruneParticlesInsideMeshPipeline];
+    [encoder setBuffer:m_particleBuffer offset:0 atIndex:0];
+    [encoder setBuffer:m_paramsBuffer offset:0 atIndex:1];
+    [encoder setAccelerationStructure:m_accelerationStructure atBufferIndex:2];
+    [encoder setBuffer:keepFlagsBuffer offset:0 atIndex:3];
+    
+    dispatchCompute(encoder, m_pruneParticlesInsideMeshPipeline, m_numParticles);
+    
+    [encoder endEncoding];
+    [commandBuffer commit];
+    [commandBuffer waitUntilCompleted];
+    
+    // Compact particle array (remove particles with flag = 0)
+    GPUParticle* particles = (GPUParticle*)m_particleBuffer.contents;
+    
+    uint32_t writeIndex = 0;
+    for (uint32_t i = 0; i < m_numParticles; i++) {
+        if (keepFlags[i] == 1) {
+            if (writeIndex != i) {
+                particles[writeIndex] = particles[i];
+            }
+            writeIndex++;
+        }
+    }
+    
+    uint32_t removedCount = m_numParticles - writeIndex;
+    m_numParticles = writeIndex;
+    
+    // Update simulation params with new particle count
+    m_params.num_particles = m_numParticles;
+    memcpy(m_paramsBuffer.contents, &m_params, sizeof(SimulationParams));
+    
+    return removedCount;
 }
 
 void MetalCompute::runSimulationStep(uint32_t frameNumber, bool hasMesh) {

@@ -468,3 +468,81 @@ kernel void clearBuffer(
     if (gid >= count) return;
     atomic_store_explicit(&buffer[gid], 0u, memory_order_relaxed);
 }
+
+// Remove any particles that are inside the mesh
+// Uses ray casting: cast rays outward in multiple directions and count intersections
+// Odd number of intersections = inside, even = outside (for each ray)
+// Use majority voting across multiple rays for robustness
+kernel void pruneParticlesInsideMesh(
+    device Particle* particles [[buffer(0)]],
+    constant SimulationParams& params [[buffer(1)]],
+    primitive_acceleration_structure accelStruct [[buffer(2)]],
+    device uint* keepFlags [[buffer(3)]],  // Output: 1 = keep, 0 = remove
+    uint gid [[thread_position_in_grid]]
+) {
+    if (gid >= params.num_particles) return;
+    
+    device Particle& p = particles[gid];
+    
+    // Test multiple ray directions for robustness
+    // Use 6 cardinal directions plus some diagonal directions
+    float3 directions[10] = {
+        float3(1.0f, 0.0f, 0.0f),
+        float3(-1.0f, 0.0f, 0.0f),
+        float3(0.0f, 1.0f, 0.0f),
+        float3(0.0f, -1.0f, 0.0f),
+        float3(0.0f, 0.0f, 1.0f),
+        float3(0.0f, 0.0f, -1.0f),
+        normalize(float3(1.0f, 1.0f, 1.0f)),
+        normalize(float3(-1.0f, 1.0f, 1.0f)),
+        normalize(float3(1.0f, -1.0f, 1.0f)),
+        normalize(float3(1.0f, 1.0f, -1.0f))
+    };
+    
+    uint insideVotes = 0;
+    uint outsideVotes = 0;
+    
+    // Cast rays in each direction and count intersections
+    for (uint dirIdx = 0; dirIdx < 10; dirIdx++) {
+        ray r;
+        r.origin = p.pos;
+        r.direction = directions[dirIdx];
+        r.min_distance = 0.00001f;
+        r.max_distance = params.domain_max * 3.0f;
+        
+        // Create intersector that finds ANY intersection
+        intersector<triangle_data> inter;
+        inter.accept_any_intersection(true);  // Accept any hit
+        
+        // Count intersections along this ray
+        uint hitCount = 0;
+        float currentMin = r.min_distance;
+        
+        for (uint i = 0; i < 100; i++) {  // Max 100 intersections per ray
+            r.min_distance = currentMin;
+            intersection_result<triangle_data> result = inter.intersect(r, accelStruct);
+            
+            if (result.type != intersection_type::none) {
+                hitCount++;
+                currentMin = result.distance + 0.0001f;  // Move past this intersection
+                if (currentMin >= r.max_distance) break;
+            } else {
+                break;  // No more intersections
+            }
+        }
+        
+        // Odd hits = inside, even hits = outside
+        if ((hitCount % 2) == 1) {
+            insideVotes++;
+        } else {
+            outsideVotes++;
+        }
+    }
+    
+    // Majority vote determines if particle is inside
+    bool isInside = insideVotes > outsideVotes;
+    
+    // Write flag: 1 = keep (outside), 0 = remove (inside)
+    keepFlags[gid] = isInside ? 0u : 1u;
+}
+

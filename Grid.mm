@@ -178,6 +178,25 @@ void Grid::createTestBox(float width, float height, float depth) {
     }
 }
 
+void Grid::pruneParticlesInsideMesh() {
+    if (!m_initialized) {
+        std::cerr << "Metal not initialized!" << std::endl;
+        return;
+    }
+    
+    if (!m_hasMesh) {
+        std::cout << "No mesh loaded; skipping particle pruning." << std::endl;
+        return;
+    }
+    
+    uint32_t initialCount = m_metal->getNumParticles();
+    uint32_t prunedCount = m_metal->pruneParticlesInsideMesh();
+    uint32_t finalCount = m_metal->getNumParticles();
+    
+    std::cout << "Pruned " << prunedCount << " particles inside the mesh." << std::endl;
+    std::cout << "Particle count: " << initialCount << " -> " << finalCount << std::endl;
+}
+
 void Grid::runSimulationStep(uint32_t frameNumber) {
     if (!m_initialized) {
         std::cerr << "Metal not initialized!" << std::endl;
