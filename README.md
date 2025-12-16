@@ -1,5 +1,7 @@
 # DSMC (Direct Simulation Monte Carlo)
 
+**Update (12/15/2025):** See the branch [convert-to-metal](https://github.com/ianfr/dsmc/tree/convert-to-metal) for a peek at the ongoing effort to port the project to run on Apple Silicon GPUs with [Metal](https://developer.apple.com/metal/Metal-Shading-Language-Specification.pdf). Ray-tracing using [Metal acceleration structures](https://developer.apple.com/documentation/metal/ray-tracing-with-acceleration-structures) is also being leveraged there to add support for arbitrary geometries embedded in the computational domain.
+
 ## Example
 
 Heat diffusion through Argon gas at STP when the bottom boundary is hot:
