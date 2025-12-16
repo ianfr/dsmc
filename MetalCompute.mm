@@ -100,6 +100,7 @@ bool MetalCompute::loadShaders(const std::string& metalLibPath) {
     m_calculateCollisionsPipeline = createPipeline("calculateCollisions");
     m_intersectMeshPipeline = createPipeline("intersectMeshPrimitive");
     m_pruneParticlesInsideMeshPipeline = createPipeline("pruneParticlesInsideMesh");
+    m_ejectParticlesFromMeshPipeline = createPipeline("ejectParticlesFromMesh");
     m_initializeParticlesPipeline = createPipeline("initializeParticles");
     m_copyParticlePositionsPipeline = createPipeline("copyParticlePositions");
     m_clearBufferPipeline = createPipeline("clearBuffer");
@@ -694,6 +695,43 @@ void MetalCompute::runSimulationStep(uint32_t frameNumber, bool hasMesh) {
     // Phase 3: Domain boundary enforcement
     enforceDomain();
     checkForNaNs(frameNumber, "enforceDomain");
+    
+    // Phase 3.5: Cleanup - eject any particles that ended up inside mesh
+    if (hasMesh && m_hasMesh) {
+        static id<MTLBuffer> ejectionCounterBuffer = nil;
+        if (!ejectionCounterBuffer) {
+            ejectionCounterBuffer = [m_device newBufferWithLength:sizeof(uint32_t)
+                                                         options:MTLResourceStorageModeShared];
+        }
+        
+        uint32_t* ejectionCounter = (uint32_t*)ejectionCounterBuffer.contents;
+        *ejectionCounter = 0;
+        
+        id<MTLCommandBuffer> commandBuffer = [m_commandQueue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+        
+        [encoder setComputePipelineState:m_ejectParticlesFromMeshPipeline];
+        [encoder setBuffer:m_particleBuffer offset:0 atIndex:0];
+        [encoder setBuffer:m_paramsBuffer offset:0 atIndex:1];
+        [encoder setAccelerationStructure:m_accelerationStructure atBufferIndex:2];
+        [encoder setBuffer:m_triangleNormalsBuffer offset:0 atIndex:3];
+        [encoder setBytes:&frameNumber length:sizeof(uint32_t) atIndex:4];
+        [encoder setBuffer:ejectionCounterBuffer offset:0 atIndex:5];
+        
+        dispatchCompute(encoder, m_ejectParticlesFromMeshPipeline, m_numParticles);
+        
+        [encoder endEncoding];
+        [commandBuffer commit];
+        [commandBuffer waitUntilCompleted];
+        
+        // Debug output for first few frames
+        if (frameNumber < 10) {
+            uint32_t ejections = *ejectionCounter;
+            if (ejections > 0) {
+                std::cout << "Frame " << frameNumber << ": Ejected " << ejections << " particles from mesh" << std::endl;
+            }
+        }
+    }
 }
 
 void MetalCompute::checkForNaNs(uint32_t frameNumber, const char* phase) {

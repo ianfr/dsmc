@@ -648,3 +648,105 @@ kernel void pruneParticlesInsideMesh(
     keepFlags[gid] = isInside ? 0u : 1u;
 }
 
+// Cleanup pass: Eject any particles that ended up inside the mesh
+// Reverses their velocity and moves them back to the boundary
+kernel void ejectParticlesFromMesh(
+    device Particle* particles [[buffer(0)]],
+    constant SimulationParams& params [[buffer(1)]],
+    primitive_acceleration_structure accelStruct [[buffer(2)]],
+    device const packed_float3* triangleNormals [[buffer(3)]],
+    constant uint& frameNumber [[buffer(4)]],
+    device atomic_uint* ejectionCounter [[buffer(5)]],  // Debug: count ejections
+    uint gid [[thread_position_in_grid]]
+) {
+    if (gid >= params.num_particles) return;
+    
+    device Particle& p = particles[gid];
+    
+    // Test if particle is inside mesh using ray-parity test
+    // Cast a single ray outward to check
+    ray test_ray;
+    test_ray.origin = p.pos;
+    test_ray.direction = normalize(float3(1.0f, 1.0f, 1.0f));  // Arbitrary direction
+    test_ray.min_distance = 0.00001f;
+    test_ray.max_distance = params.domain_max * 3.0f;
+    
+    intersector<triangle_data> inter;
+    inter.accept_any_intersection(true);
+    
+    // Count intersections
+    uint hitCount = 0;
+    float currentMin = test_ray.min_distance;
+    
+    for (uint i = 0; i < 100; i++) {
+        test_ray.min_distance = currentMin;
+        intersection_result<triangle_data> result = inter.intersect(test_ray, accelStruct);
+        
+        if (result.type != intersection_type::none) {
+            hitCount++;
+            currentMin = result.distance + 0.0001f;
+            if (currentMin >= test_ray.max_distance) break;
+        } else {
+            break;
+        }
+    }
+    
+    // Odd hits = inside
+    bool isInside = (hitCount % 2) == 1;
+    
+    if (isInside) {
+        // Particle is inside! Reverse velocity and find exit point
+        float speed = length(p.vel);
+        if (speed < 1.0f) {
+            // If essentially stationary, give it a random velocity outward
+            uint seed = gid * 1099087573u + frameNumber * 747796405u;
+            p.vel = random_hemisphere(seed, normalize(float3(1.0f, 1.0f, 1.0f))) * 400.0f;
+            speed = 400.0f;
+        }
+        
+        // Cast ray in opposite direction of velocity to find boundary
+        float3 velDir = normalize(p.vel);
+        ray exit_ray;
+        exit_ray.origin = p.pos;
+        exit_ray.direction = -velDir;  // Opposite to velocity
+        exit_ray.min_distance = 0.0f;
+        exit_ray.max_distance = params.domain_max * 3.0f;
+        
+        intersector<triangle_data> exit_inter;
+        exit_inter.accept_any_intersection(false);  // Closest hit
+        exit_inter.force_opacity(forced_opacity::opaque);
+        
+        intersection_result<triangle_data> exit_result = exit_inter.intersect(exit_ray, accelStruct);
+        
+        if (exit_result.type != intersection_type::none) {
+            // Found exit point - place particle just outside surface
+            float hit_distance = exit_result.distance;
+            uint primIdx = exit_result.primitive_id;
+            
+            float3 exit_point = exit_ray.origin + exit_ray.direction * hit_distance;
+            float3 normal = float3(triangleNormals[primIdx]);
+            
+            // Ensure normal points outward (away from ray direction)
+            if (dot(normal, exit_ray.direction) > 0.0f) {
+                normal = -normal;
+            }
+            
+            // Place particle slightly outside surface
+            p.pos = exit_point + normal * (params.eps * 5.0f);
+            
+            // Reverse velocity (now pointing outward)
+            p.vel = -p.vel;
+            
+            // Apply diffuse reflection with reversed velocity
+            uint seed = gid * 1099087573u + frameNumber * 747796405u + primIdx;
+            float3 reflected_dir = random_hemisphere(seed, normal);
+            p.vel = speed * reflected_dir;
+            
+            // Count ejection
+            if (ejectionCounter) {
+                atomic_fetch_add_explicit(ejectionCounter, 1u, memory_order_relaxed);
+            }
+        }
+    }
+}
+

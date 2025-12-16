@@ -104,6 +104,7 @@ private:
     id<MTLComputePipelineState> m_calculateCollisionsPipeline;
     id<MTLComputePipelineState> m_intersectMeshPipeline;
     id<MTLComputePipelineState> m_pruneParticlesInsideMeshPipeline;
+    id<MTLComputePipelineState> m_ejectParticlesFromMeshPipeline;
     id<MTLComputePipelineState> m_initializeParticlesPipeline;
     id<MTLComputePipelineState> m_copyParticlePositionsPipeline;
     id<MTLComputePipelineState> m_clearBufferPipeline;
