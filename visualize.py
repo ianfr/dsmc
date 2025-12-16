@@ -11,6 +11,8 @@ Examples:
     python visualize.py DSMC_OUT 50           # Visualize timestep 50
     python visualize.py build/DSMC_OUT        # Visualize timestep 0
     python visualize.py DSMC_OUT --loop       # Animate all timesteps
+    python visualize.py DSMC_OUT --loop --fps 10        Animate at 10 FPS
+    python visualize.py DSMC_OUT --vmin 0 --vmax 1000   Set color scale from 0 to 1000 m/s
 """
 
 import sys
@@ -94,8 +96,17 @@ def get_domain_bounds(data_dir: str) -> tuple[float, float, float, float, float,
     return (x_min, x_max, y_min, y_max, z_min, z_max)
 
 
-def visualize_timestep(timestep: int, data_dir: str, plotter=None, domain_bounds=None):
-    """Create interactive 3D visualization of particles at given timestep."""
+def visualize_timestep(timestep: int, data_dir: str, plotter=None, domain_bounds=None, vmin=None, vmax=None):
+    """Create interactive 3D visualization of particles at given timestep.
+    
+    Args:
+        timestep: Timestep number to visualize (-1 for initial state)
+        data_dir: Directory containing particle data
+        plotter: Existing PyVista plotter to reuse (optional)
+        domain_bounds: Tuple of (x_min, x_max, y_min, y_max, z_min, z_max)
+        vmin: Minimum velocity for color scale (optional)
+        vmax: Maximum velocity for color scale (optional)
+    """
     
     # Build filename
     if timestep == -1:
@@ -140,20 +151,27 @@ def visualize_timestep(timestep: int, data_dir: str, plotter=None, domain_bounds
         show_after = False
     
     # Add mesh with turbo colormap (works well on dark backgrounds)
-    plotter.add_mesh(
-        cloud,
-        scalars='speed',
-        cmap='turbo',
-        point_size=3,
-        render_points_as_spheres=True,
-        scalar_bar_args={
+    mesh_kwargs = {
+        'scalars': 'speed',
+        'cmap': 'turbo',
+        'point_size': 3,
+        'render_points_as_spheres': True,
+        'scalar_bar_args': {
             'title': 'Speed (m/s)',
             'title_font_size': 16,
             'label_font_size': 14,
             'color': 'white',
             'font_family': 'arial'
         }
-    )
+    }
+    
+    # Apply custom color limits if provided
+    if vmin is not None or vmax is not None:
+        clim = [vmin if vmin is not None else speeds.min(),
+                vmax if vmax is not None else speeds.max()]
+        mesh_kwargs['clim'] = clim
+    
+    plotter.add_mesh(cloud, **mesh_kwargs)
     
     # Add domain bounding box
     x_min, x_max, y_min, y_max, z_min, z_max = domain_bounds
@@ -203,8 +221,15 @@ def visualize_timestep(timestep: int, data_dir: str, plotter=None, domain_bounds
     return plotter
 
 
-def animate_timesteps(data_dir: str, fps: int = 5):
-    """Animate all available timesteps in a loop."""
+def animate_timesteps(data_dir: str, fps: int = 5, vmin=None, vmax=None):
+    """Animate all available timesteps in a loop.
+    
+    Args:
+        data_dir: Directory containing particle data
+        fps: Frames per second for animation
+        vmin: Minimum velocity for color scale (optional)
+        vmax: Maximum velocity for color scale (optional)
+    """
     
     timesteps = get_available_timesteps(data_dir, include_initial=True)
     
@@ -246,20 +271,27 @@ def animate_timesteps(data_dir: str, fps: int = 5):
                 cloud['speed'] = speeds
                 
                 # Add mesh
-                plotter.add_mesh(
-                    cloud,
-                    scalars='speed',
-                    cmap='turbo',
-                    point_size=3,
-                    render_points_as_spheres=True,
-                    scalar_bar_args={
+                mesh_kwargs = {
+                    'scalars': 'speed',
+                    'cmap': 'turbo',
+                    'point_size': 3,
+                    'render_points_as_spheres': True,
+                    'scalar_bar_args': {
                         'title': 'Speed (m/s)',
                         'title_font_size': 16,
                         'label_font_size': 14,
                         'color': 'white',
                         'font_family': 'arial'
                     }
-                )
+                }
+                
+                # Apply custom color limits if provided
+                if vmin is not None or vmax is not None:
+                    clim = [vmin if vmin is not None else speeds.min(),
+                            vmax if vmax is not None else speeds.max()]
+                    mesh_kwargs['clim'] = clim
+                
+                plotter.add_mesh(cloud, **mesh_kwargs)
                 
                 # Add domain bounding box
                 x_min, x_max, y_min, y_max, z_min, z_max = domain_bounds
@@ -323,11 +355,12 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s DSMC_OUT 50              Visualize timestep 50
-  %(prog)s build/DSMC_OUT           Visualize timestep 0 (default)
-  %(prog)s DSMC_OUT --loop          Animate all timesteps
-  %(prog)s DSMC_OUT --loop --fps 10 Animate at 10 FPS
-        """
+    python visualize.py DSMC_OUT 50           # Visualize timestep 50
+    python visualize.py build/DSMC_OUT        # Visualize timestep 0
+    python visualize.py DSMC_OUT --loop       # Animate all timesteps
+    python visualize.py DSMC_OUT --loop --fps 10        Animate at 10 FPS
+    python visualize.py DSMC_OUT --vmin 0 --vmax 1000   Set color scale from 0 to 1000 m/s
+"""
     )
     
     parser.add_argument(
@@ -356,6 +389,20 @@ Examples:
         help='Frames per second for animation (default: 5)'
     )
     
+    parser.add_argument(
+        '--vmin',
+        type=float,
+        default=None,
+        help='Minimum velocity for color scale (default: auto from data)'
+    )
+    
+    parser.add_argument(
+        '--vmax',
+        type=float,
+        default=None,
+        help='Maximum velocity for color scale (default: auto from data)'
+    )
+    
     args = parser.parse_args()
     
     # Validate data directory
@@ -365,9 +412,9 @@ Examples:
     
     # Run visualization
     if args.loop:
-        animate_timesteps(args.data_dir, args.fps)
+        animate_timesteps(args.data_dir, args.fps, vmin=args.vmin, vmax=args.vmax)
     else:
-        visualize_timestep(args.timestep, args.data_dir)
+        visualize_timestep(args.timestep, args.data_dir, vmin=args.vmin, vmax=args.vmax)
 
 
 if __name__ == "__main__":
