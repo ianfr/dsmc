@@ -91,6 +91,7 @@ bool MetalCompute::loadShaders(const std::string& metalLibPath) {
     
     // Create compute pipelines
     m_updatePositionsPipeline = createPipeline("updatePositions");
+    m_updatePositionsWithMeshPipeline = createPipeline("updatePositionsWithMesh");
     m_enforceDomainPipeline = createPipeline("enforceDomain");
     m_computeCellIndicesPipeline = createPipeline("computeCellIndices");
     m_countParticlesPerCellPipeline = createPipeline("countParticlesPerCell");
@@ -202,6 +203,8 @@ bool MetalCompute::buildAccelerationStructure(const std::vector<Triangle>& trian
         return true;
     }
     
+    std::cout << "Building acceleration structure from " << triangles.size() << " triangles..." << std::endl;
+    
     // Create geometry descriptor for triangles
     MTLAccelerationStructureTriangleGeometryDescriptor* geometryDesc =
         [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
@@ -227,6 +230,12 @@ bool MetalCompute::buildAccelerationStructure(const std::vector<Triangle>& trian
         vertices[i * 9 + 8] = triangles[i].v2[2];
     }
     
+    // Debug: print first triangle
+    std::cout << "First triangle vertices:" << std::endl;
+    std::cout << "  v0: (" << triangles[0].v0[0] << ", " << triangles[0].v0[1] << ", " << triangles[0].v0[2] << ")" << std::endl;
+    std::cout << "  v1: (" << triangles[0].v1[0] << ", " << triangles[0].v1[1] << ", " << triangles[0].v1[2] << ")" << std::endl;
+    std::cout << "  v2: (" << triangles[0].v2[0] << ", " << triangles[0].v2[1] << ", " << triangles[0].v2[2] << ")" << std::endl;
+    
     geometryDesc.vertexBuffer = vertexBuffer;
     geometryDesc.vertexBufferOffset = 0;
     geometryDesc.vertexStride = sizeof(float) * 3;
@@ -240,6 +249,8 @@ bool MetalCompute::buildAccelerationStructure(const std::vector<Triangle>& trian
     
     // Get sizes needed for acceleration structure
     MTLAccelerationStructureSizes sizes = [m_device accelerationStructureSizesWithDescriptor:accelDesc];
+    
+    std::cout << "Acceleration structure size: " << sizes.accelerationStructureSize << " bytes" << std::endl;
     
     // Create acceleration structure
     m_accelerationStructure = [m_device newAccelerationStructureWithSize:sizes.accelerationStructureSize];
@@ -262,7 +273,7 @@ bool MetalCompute::buildAccelerationStructure(const std::vector<Triangle>& trian
     [commandBuffer waitUntilCompleted];
     
     m_hasMesh = true;
-    std::cout << "Built acceleration structure for " << triangles.size() << " triangles" << std::endl;
+    std::cout << "Acceleration structure built successfully" << std::endl;
     
     return true;
 }
@@ -500,6 +511,16 @@ void MetalCompute::intersectMesh(uint32_t frameNumber) {
     [encoder endEncoding];
     [commandBuffer commit];
     [commandBuffer waitUntilCompleted];
+    
+    // Debug: Check for mesh interactions on first few frames
+    if (frameNumber < 5) {
+        static bool warned = false;
+        if (!warned) {
+            std::cout << "Frame " << frameNumber << ": Mesh intersection check executed for " 
+                      << m_numParticles << " particles" << std::endl;
+            warned = true;
+        }
+    }
 }
 
 uint32_t MetalCompute::pruneParticlesInsideMesh() {
@@ -613,17 +634,64 @@ void MetalCompute::runSimulationStep(uint32_t frameNumber, bool hasMesh) {
     calculateCollisions(frameNumber);
     checkForNaNs(frameNumber, "calculateCollisions");
     
-    // Phase 2: Position update
-    updatePositions();
+    // Phase 2: Position update (with mesh intersection if mesh exists)
+    if (hasMesh && m_hasMesh) {
+        // Create debug buffers for hit and ray counting
+        static id<MTLBuffer> hitCounterBuffer = nil;
+        static id<MTLBuffer> rayCounterBuffer = nil;
+        static id<MTLBuffer> particleCounterBuffer = nil;
+        if (!hitCounterBuffer) {
+            hitCounterBuffer = [m_device newBufferWithLength:sizeof(uint32_t)
+                                                     options:MTLResourceStorageModeShared];
+            rayCounterBuffer = [m_device newBufferWithLength:sizeof(uint32_t)
+                                                     options:MTLResourceStorageModeShared];
+            particleCounterBuffer = [m_device newBufferWithLength:sizeof(uint32_t)
+                                                          options:MTLResourceStorageModeShared];
+        }
+        
+        // Clear counters
+        uint32_t* hitCounter = (uint32_t*)hitCounterBuffer.contents;
+        uint32_t* rayCounter = (uint32_t*)rayCounterBuffer.contents;
+        uint32_t* particleCounter = (uint32_t*)particleCounterBuffer.contents;
+        *hitCounter = 0;
+        *rayCounter = 0;
+        *particleCounter = 0;
+        
+        // Use combined kernel that handles both position update and mesh collision
+        id<MTLCommandBuffer> commandBuffer = [m_commandQueue commandBuffer];
+        id<MTLComputeCommandEncoder> encoder = [commandBuffer computeCommandEncoder];
+        
+        [encoder setComputePipelineState:m_updatePositionsWithMeshPipeline];
+        [encoder setBuffer:m_particleBuffer offset:0 atIndex:0];
+        [encoder setBuffer:m_paramsBuffer offset:0 atIndex:1];
+        [encoder setAccelerationStructure:m_accelerationStructure atBufferIndex:2];
+        [encoder setBuffer:m_triangleNormalsBuffer offset:0 atIndex:3];
+        [encoder setBytes:&frameNumber length:sizeof(uint32_t) atIndex:4];
+        [encoder setBuffer:hitCounterBuffer offset:0 atIndex:5];
+        [encoder setBuffer:rayCounterBuffer offset:0 atIndex:6];
+        [encoder setBuffer:particleCounterBuffer offset:0 atIndex:7];
+        
+        dispatchCompute(encoder, m_updatePositionsWithMeshPipeline, m_numParticles);
+        
+        [encoder endEncoding];
+        [commandBuffer commit];
+        [commandBuffer waitUntilCompleted];
+        
+        // Debug output for first few frames
+        if (frameNumber < 10) {
+            uint32_t hits = *hitCounter;
+            uint32_t rays = *rayCounter;
+            uint32_t particles = *particleCounter;
+            std::cout << "Frame " << frameNumber << ": " << particles << " particles, " 
+                      << rays << " rays traced, " << hits << " mesh collisions" << std::endl;
+        }
+    } else {
+        // No mesh - use regular position update
+        updatePositions();
+    }
     checkForNaNs(frameNumber, "updatePositions");
     
-    // Phase 3: Mesh intersection (if mesh exists)
-    if (hasMesh && m_hasMesh) {
-        intersectMesh(frameNumber);
-        checkForNaNs(frameNumber, "intersectMesh");
-    }
-    
-    // Phase 4: Domain boundary enforcement
+    // Phase 3: Domain boundary enforcement
     enforceDomain();
     checkForNaNs(frameNumber, "enforceDomain");
 }

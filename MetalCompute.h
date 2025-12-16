@@ -95,6 +95,7 @@ private:
     
     // Compute pipelines
     id<MTLComputePipelineState> m_updatePositionsPipeline;
+    id<MTLComputePipelineState> m_updatePositionsWithMeshPipeline;
     id<MTLComputePipelineState> m_enforceDomainPipeline;
     id<MTLComputePipelineState> m_computeCellIndicesPipeline;
     id<MTLComputePipelineState> m_countParticlesPerCellPipeline;

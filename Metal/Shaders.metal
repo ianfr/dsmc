@@ -101,6 +101,94 @@ kernel void updatePositions(
     particles[gid].pos += particles[gid].vel * params.delta_t;
 }
 
+// Kernel 1b: Update particle positions with mesh collision check
+kernel void updatePositionsWithMesh(
+    device Particle* particles [[buffer(0)]],
+    constant SimulationParams& params [[buffer(1)]],
+    primitive_acceleration_structure accelStruct [[buffer(2)]],
+    device const packed_float3* triangleNormals [[buffer(3)]],
+    constant uint& frameNumber [[buffer(4)]],
+    device atomic_uint* hitCounter [[buffer(5)]],  // Debug: count mesh hits
+    device atomic_uint* rayCounter [[buffer(6)]],  // Debug: count rays traced
+    device atomic_uint* particleCounter [[buffer(7)]],  // Debug: count particles processed
+    uint gid [[thread_position_in_grid]]
+) {
+    if (gid >= params.num_particles) return;
+    
+    // Debug: count particles processed
+    if (particleCounter) {
+        atomic_fetch_add_explicit(particleCounter, 1u, memory_order_relaxed);
+    }
+    
+    device Particle& p = particles[gid];
+    
+    // Store old position
+    float3 old_pos = p.pos;
+    float3 vel = p.vel;
+    float speed = length(vel);
+    
+    // Calculate new position
+    float3 new_pos = old_pos + vel * params.delta_t;
+    
+    // Check if trajectory intersects mesh
+    float3 displacement = new_pos - old_pos;
+    float displacement_length = length(displacement);
+    
+    // Only trace rays if particle actually moved (displacement threshold: 0.1 nm, speed threshold: 1 m/s)
+    if (displacement_length > 1e-10f && speed > 1.0f) {
+        // Debug: count rays traced
+        if (rayCounter) {
+            atomic_fetch_add_explicit(rayCounter, 1u, memory_order_relaxed);
+        }
+        
+        ray r;
+        r.origin = old_pos;
+        r.direction = normalize(displacement);
+        r.min_distance = 0.0f;
+        r.max_distance = displacement_length;
+        
+        // Create intersector
+        intersector<triangle_data> inter;
+        inter.accept_any_intersection(false);  // Want closest hit
+        inter.force_opacity(forced_opacity::opaque);
+        
+        // Perform intersection
+        intersection_result<triangle_data> result = inter.intersect(r, accelStruct);
+        
+        if (result.type != intersection_type::none) {
+            // Hit the mesh! Place particle at hit point and reflect
+            float hit_distance = result.distance;
+            uint primIdx = result.primitive_id;
+            
+            // Debug: increment hit counter
+            if (hitCounter) {
+                atomic_fetch_add_explicit(hitCounter, 1u, memory_order_relaxed);
+            }
+            
+            // Move particle to hit point (slightly before surface)
+            new_pos = r.origin + r.direction * max(0.0f, hit_distance - params.eps * 2.0f);
+            
+            // Get pre-computed triangle normal
+            float3 normal = float3(triangleNormals[primIdx]);
+            
+            // Ensure normal points away from surface (opposite to particle's motion)
+            if (dot(normal, r.direction) > 0.0f) {
+                normal = -normal;
+            }
+            
+            // Initialize random seed for diffuse reflection
+            uint seed = gid * 1099087573u + frameNumber * 747796405u + primIdx;
+            
+            // Diffuse reflection: random direction in hemisphere around surface normal
+            float3 reflected_dir = random_hemisphere(seed, normal);
+            p.vel = speed * reflected_dir;
+        }
+    }
+    
+    // Update position
+    p.pos = new_pos;
+}
+
 // Kernel 2: Enforce domain boundaries (replaces Grid::enforceDomain)
 kernel void enforceDomain(
     device Particle* particles [[buffer(0)]],
@@ -369,6 +457,8 @@ kernel void intersectMesh(
 }
 
 // Alternative kernel using primitive acceleration structure (no instancing)
+// This kernel checks if particles have crossed through the mesh after position update
+// and reflects them back if they did
 kernel void intersectMeshPrimitive(
     device Particle* particles [[buffer(0)]],
     constant SimulationParams& params [[buffer(1)]],
@@ -383,16 +473,25 @@ kernel void intersectMeshPrimitive(
     float speed = length(p.vel);
     if (speed < 0.0001f) return;
     
-    // Create ray from particle position in velocity direction
+    // Calculate where particle WAS before this timestep
+    float3 prev_pos = p.pos - p.vel * params.delta_t;
+    
+    // Create ray from previous position to current position
+    float3 displacement = p.pos - prev_pos;
+    float displacement_length = length(displacement);
+    
+    if (displacement_length < 0.0001f) return;
+    
     ray r;
-    r.origin = p.pos;
-    r.direction = normalize(p.vel);
-    r.min_distance = 0.0001f;
-    r.max_distance = speed * params.delta_t * 2.0f;
+    r.origin = prev_pos;
+    r.direction = normalize(displacement);
+    r.min_distance = 0.0f;
+    r.max_distance = displacement_length;
     
     // Create intersector
     intersector<triangle_data> inter;
-    inter.accept_any_intersection(false);
+    inter.accept_any_intersection(false);  // Want closest hit
+    inter.force_opacity(forced_opacity::opaque);
     
     // Perform intersection
     intersection_result<triangle_data> result = inter.intersect(r, accelStruct);
@@ -401,21 +500,24 @@ kernel void intersectMeshPrimitive(
         float hit_distance = result.distance;
         uint primIdx = result.primitive_id;
         
-        // Move particle to just before hit point
-        float3 hit_point = r.origin + r.direction * (hit_distance * 0.99f);
+        // Move particle back to hit point (slightly before surface)
+        float3 hit_point = r.origin + r.direction * max(0.0f, hit_distance - params.eps * 2.0f);
         p.pos = hit_point;
         
         // Get pre-computed triangle normal
         float3 normal = float3(triangleNormals[primIdx]);
-        if (!result.triangle_front_facing) {
+        
+        // Ensure normal points away from surface (opposite to particle's motion)
+        if (dot(normal, r.direction) > 0.0f) {
             normal = -normal;
         }
         
-        // Initialize random seed
+        // Initialize random seed for diffuse reflection
         uint seed = gid * 1099087573u + frameNumber * 747796405u + primIdx;
         
-        // Diffuse reflection
-        p.vel = speed * random_hemisphere(seed, normal);
+        // Diffuse reflection: random direction in hemisphere around surface normal
+        float3 reflected_dir = random_hemisphere(seed, normal);
+        p.vel = speed * reflected_dir;
     }
 }
 
