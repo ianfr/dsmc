@@ -13,6 +13,8 @@ Examples:
     python visualize.py DSMC_OUT --loop       # Animate all timesteps
     python visualize.py DSMC_OUT --loop --fps 10        Animate at 10 FPS
     python visualize.py DSMC_OUT --vmin 0 --vmax 1000   Set color scale from 0 to 1000 m/s
+    python visualize.py DSMC_OUT 5 --clip-axis z --clip-start 0.4       # Clip Z axis from 40%% to 100%%
+    python visualize.py DSMC_OUT 5 --clip-axis x --clip-start 0.25 --clip-end 0.75  # Clip X axis middle 50%%
 """
 
 import sys
@@ -73,6 +75,53 @@ def create_plotter():
     return plotter
 
 
+def clip_particles(positions: np.ndarray, speeds: np.ndarray, domain_bounds: tuple, 
+                   clip_axis: str = None, clip_start: float = 0.0, clip_end: float = 1.0) -> tuple[np.ndarray, np.ndarray]:
+    """Clip particles to a box along specified axis.
+    
+    Args:
+        positions: Nx3 array of particle positions
+        speeds: N array of particle speeds
+        domain_bounds: Tuple of (x_min, x_max, y_min, y_max, z_min, z_max)
+        clip_axis: Axis to clip along ('x', 'y', or 'z'), None for no clipping
+        clip_start: Start position as proportion of domain length [0-1]
+        clip_end: End position as proportion of domain length [0-1]
+    
+    Returns:
+        Tuple of (filtered_positions, filtered_speeds)
+    """
+    if clip_axis is None:
+        return positions, speeds
+    
+    # Map axis to index
+    axis_map = {'x': 0, 'y': 1, 'z': 2}
+    if clip_axis.lower() not in axis_map:
+        print(f"Warning: Invalid clip axis '{clip_axis}', ignoring clipping")
+        return positions, speeds
+    
+    axis_idx = axis_map[clip_axis.lower()]
+    x_min, x_max, y_min, y_max, z_min, z_max = domain_bounds
+    
+    # Get domain bounds for the specified axis
+    if axis_idx == 0:
+        domain_min, domain_max = x_min, x_max
+    elif axis_idx == 1:
+        domain_min, domain_max = y_min, y_max
+    else:
+        domain_min, domain_max = z_min, z_max
+    
+    # Convert proportions to absolute positions
+    domain_length = domain_max - domain_min
+    abs_start = domain_min + clip_start * domain_length
+    abs_end = domain_min + clip_end * domain_length
+    
+    # Filter particles
+    axis_positions = positions[:, axis_idx]
+    mask = (axis_positions >= abs_start) & (axis_positions <= abs_end)
+    
+    return positions[mask], speeds[mask]
+
+
 def get_domain_bounds(data_dir: str) -> tuple[float, float, float, float, float, float]:
     """Get domain bounds from afterCreate-particle.csv file.
     
@@ -96,7 +145,8 @@ def get_domain_bounds(data_dir: str) -> tuple[float, float, float, float, float,
     return (x_min, x_max, y_min, y_max, z_min, z_max)
 
 
-def visualize_timestep(timestep: int, data_dir: str, plotter=None, domain_bounds=None, vmin=None, vmax=None):
+def visualize_timestep(timestep: int, data_dir: str, plotter=None, domain_bounds=None, vmin=None, vmax=None,
+                       clip_axis=None, clip_start=0.0, clip_end=1.0):
     """Create interactive 3D visualization of particles at given timestep.
     
     Args:
@@ -106,6 +156,9 @@ def visualize_timestep(timestep: int, data_dir: str, plotter=None, domain_bounds
         domain_bounds: Tuple of (x_min, x_max, y_min, y_max, z_min, z_max)
         vmin: Minimum velocity for color scale (optional)
         vmax: Maximum velocity for color scale (optional)
+        clip_axis: Axis to clip along ('x', 'y', or 'z'), None for no clipping
+        clip_start: Start position as proportion of domain length [0-1]
+        clip_end: End position as proportion of domain length [0-1]
     """
     
     # Build filename
@@ -130,13 +183,17 @@ def visualize_timestep(timestep: int, data_dir: str, plotter=None, domain_bounds
             print(f"Available timesteps: {available[0][0]} - {available[-1][0]}")
         return None
     
-    n_particles = len(positions)
-    print(f"  Particles: {n_particles:,}")
-    print(f"  Speed range: {speeds.min():.2e} - {speeds.max():.2e}")
-    
     # Get domain bounds if not provided
     if domain_bounds is None:
         domain_bounds = get_domain_bounds(data_dir)
+    
+    # Apply clipping if specified
+    if clip_axis is not None:
+        positions, speeds = clip_particles(positions, speeds, domain_bounds, clip_axis, clip_start, clip_end)
+    
+    n_particles = len(positions)
+    print(f"  Particles: {n_particles:,}")
+    print(f"  Speed range: {speeds.min():.2e} - {speeds.max():.2e}")
     
     # Create point cloud
     cloud = pv.PolyData(positions)
@@ -221,7 +278,8 @@ def visualize_timestep(timestep: int, data_dir: str, plotter=None, domain_bounds
     return plotter
 
 
-def animate_timesteps(data_dir: str, fps: int = 5, vmin=None, vmax=None):
+def animate_timesteps(data_dir: str, fps: int = 5, vmin=None, vmax=None,
+                      clip_axis=None, clip_start=0.0, clip_end=1.0):
     """Animate all available timesteps in a loop.
     
     Args:
@@ -229,6 +287,9 @@ def animate_timesteps(data_dir: str, fps: int = 5, vmin=None, vmax=None):
         fps: Frames per second for animation
         vmin: Minimum velocity for color scale (optional)
         vmax: Maximum velocity for color scale (optional)
+        clip_axis: Axis to clip along ('x', 'y', or 'z'), None for no clipping
+        clip_start: Start position as proportion of domain length [0-1]
+        clip_end: End position as proportion of domain length [0-1]
     """
     
     timesteps = get_available_timesteps(data_dir, include_initial=True)
@@ -262,6 +323,10 @@ def animate_timesteps(data_dir: str, fps: int = 5, vmin=None, vmax=None):
                 
                 # Load data
                 positions, speeds = load_particle_data(filepath)
+                
+                # Apply clipping if specified
+                if clip_axis is not None:
+                    positions, speeds = clip_particles(positions, speeds, domain_bounds, clip_axis, clip_start, clip_end)
                 
                 # Clear and update
                 plotter.clear()
@@ -355,11 +420,13 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python visualize.py DSMC_OUT 50           # Visualize timestep 50
-    python visualize.py build/DSMC_OUT        # Visualize timestep 0
-    python visualize.py DSMC_OUT --loop       # Animate all timesteps
-    python visualize.py DSMC_OUT --loop --fps 10        Animate at 10 FPS
-    python visualize.py DSMC_OUT --vmin 0 --vmax 1000   Set color scale from 0 to 1000 m/s
+    python visualize.py DSMC_OUT 50                                   # Visualize timestep 50
+    python visualize.py build/DSMC_OUT 0                                # Visualize timestep 0
+    python visualize.py DSMC_OUT --loop                               # Animate all timesteps
+    python visualize.py DSMC_OUT --loop --fps 10                      # Animate at 10 FPS
+    python visualize.py DSMC_OUT -1 --vmin 0 --vmax 1000                 # Set color scale from 0 to 1000 m/s
+    python visualize.py DSMC_OUT 5 --clip-axis z --clip-start 0.4       # Clip Z axis from 40%% to 100%%
+    python visualize.py DSMC_OUT 5 --clip-axis x --clip-start 0.25 --clip-end 0.75  # Clip X axis middle 50%%
 """
     )
     
@@ -403,6 +470,28 @@ Examples:
         help='Maximum velocity for color scale (default: auto from data)'
     )
     
+    parser.add_argument(
+        '--clip-axis',
+        type=str,
+        choices=['x', 'y', 'z', 'X', 'Y', 'Z'],
+        default=None,
+        help='Axis to clip along (x, y, or z)'
+    )
+    
+    parser.add_argument(
+        '--clip-start',
+        type=float,
+        default=0.0,
+        help='Start position for clipping as proportion of domain [0-1] (default: 0.0)'
+    )
+    
+    parser.add_argument(
+        '--clip-end',
+        type=float,
+        default=1.0,
+        help='End position for clipping as proportion of domain [0-1] (default: 1.0)'
+    )
+    
     args = parser.parse_args()
     
     # Validate data directory
@@ -412,9 +501,11 @@ Examples:
     
     # Run visualization
     if args.loop:
-        animate_timesteps(args.data_dir, args.fps, vmin=args.vmin, vmax=args.vmax)
+        animate_timesteps(args.data_dir, args.fps, vmin=args.vmin, vmax=args.vmax,
+                         clip_axis=args.clip_axis, clip_start=args.clip_start, clip_end=args.clip_end)
     else:
-        visualize_timestep(args.timestep, args.data_dir, vmin=args.vmin, vmax=args.vmax)
+        visualize_timestep(args.timestep, args.data_dir, vmin=args.vmin, vmax=args.vmax,
+                          clip_axis=args.clip_axis, clip_start=args.clip_start, clip_end=args.clip_end)
 
 
 if __name__ == "__main__":
