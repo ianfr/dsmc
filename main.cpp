@@ -5,7 +5,7 @@
 #include <fstream>
 
 #include "Grid.h"
-#include "json.hpp"
+#include <json.hpp>
 
 using json = nlohmann::json;
 

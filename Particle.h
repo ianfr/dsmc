@@ -7,7 +7,7 @@
 
 #define PI 3.14159265
 
-#include "Eigen3/Eigen/Dense"
+#include <Eigen/Dense>
 
 #define PRINT_VERBOSE 0
 
